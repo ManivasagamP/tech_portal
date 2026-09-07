@@ -2,40 +2,55 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'app_colors.dart';
+import 'fe_colors.dart';
 import 'theme_extensions.dart';
 
-/// Light-only, matching the web technician portal. It ships no dark variants.
+/// Light-only, matching the "Navy Professional" web redesign direction.
+/// It ships no dark variant.
 abstract final class AppTheme {
   static ThemeData build() {
-    const scheme = ColorScheme(
+    final primaryContainer = Color.alphaBlend(
+      FeColors.primary.withValues(alpha: 0.10),
+      FeColors.panel,
+    );
+    final secondaryContainer = Color.alphaBlend(
+      FeColors.ink2.withValues(alpha: 0.10),
+      FeColors.panel,
+    );
+
+    final scheme = ColorScheme(
       brightness: Brightness.light,
-      primary: AppColors.orange600,
-      onPrimary: AppColors.white,
-      primaryContainer: AppColors.orange50,
-      onPrimaryContainer: AppColors.orange700,
-      secondary: AppColors.ink,
-      onSecondary: AppColors.white,
-      secondaryContainer: AppColors.gray100,
-      onSecondaryContainer: AppColors.gray900,
-      tertiary: AppColors.purple600,
-      onTertiary: AppColors.white,
-      error: AppColors.red600,
-      onError: AppColors.white,
-      errorContainer: AppColors.red50,
-      onErrorContainer: AppColors.red700,
-      surface: AppColors.white,
-      onSurface: AppColors.gray900,
-      onSurfaceVariant: AppColors.gray500,
-      surfaceContainerLowest: AppColors.white,
-      surfaceContainerLow: AppColors.gray50,
-      surfaceContainer: AppColors.gray100,
-      outline: AppColors.gray200,
-      outlineVariant: AppColors.gray100,
-      scrim: Color(0x80000000),
-      shadow: Color(0x0D000000),
-      inverseSurface: AppColors.slate800,
-      onInverseSurface: AppColors.white,
+      primary: FeColors.primary,
+      onPrimary: FeColors.onPrimary,
+      primaryContainer: primaryContainer,
+      onPrimaryContainer: FeColors.primary,
+      // A muted neutral, not a second "dark chrome" surface — the header no
+      // longer paints a dark bar by default, see FeHeader.
+      secondary: FeColors.ink2,
+      onSecondary: Colors.white,
+      secondaryContainer: secondaryContainer,
+      onSecondaryContainer: FeColors.ink,
+      // The web dashboard module's own accent (see FeColors.dashboardAccent
+      // doc comment) — a real, distinct hue, appropriate for the scheme's
+      // tertiary role rather than a stand-in for the brand color.
+      tertiary: FeColors.dashboardAccent,
+      onTertiary: Colors.white,
+      error: FeColors.danger,
+      onError: Colors.white,
+      errorContainer: FeColors.dangerSoft,
+      onErrorContainer: FeColors.danger,
+      surface: FeColors.panel,
+      onSurface: FeColors.ink,
+      onSurfaceVariant: FeColors.ink2,
+      surfaceContainerLowest: FeColors.panel,
+      surfaceContainerLow: FeColors.page,
+      surfaceContainer: FeColors.page,
+      outline: FeColors.line,
+      outlineVariant: FeColors.line.withValues(alpha: 0.6),
+      scrim: const Color(0x80000000),
+      shadow: const Color(0x0D000000),
+      inverseSurface: FeColors.ink,
+      onInverseSurface: Colors.white,
     );
 
     final text = _textTheme();
@@ -43,28 +58,32 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: AppColors.gray50,
-      canvasColor: AppColors.white,
+      scaffoldBackgroundColor: FeColors.page,
+      canvasColor: FeColors.panel,
       splashFactory: InkRipple.splashFactory,
       textTheme: text,
+      // A sane default matching FeHeader's standard variant, kept as a
+      // fallback for any bare AppBar() that isn't routed through FeHeader —
+      // FeHeader itself always sets its own colors explicitly and never
+      // reads this. See widgets/fe_header.dart.
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.ink,
-        foregroundColor: AppColors.white,
+        backgroundColor: FeColors.panel,
+        foregroundColor: FeColors.ink,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         toolbarHeight: 53,
         centerTitle: false,
-        titleTextStyle: text.titleMedium?.copyWith(color: AppColors.white),
-        shape: const Border(bottom: BorderSide(color: AppColors.inkBorder)),
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        titleTextStyle: text.titleMedium?.copyWith(color: FeColors.ink),
+        shape: Border(bottom: BorderSide(color: FeColors.line)),
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.orange600,
-          foregroundColor: AppColors.white,
-          disabledBackgroundColor: AppColors.orange600.withValues(alpha: 0.5),
-          disabledForegroundColor: AppColors.white.withValues(alpha: 0.8),
+          backgroundColor: FeColors.primary,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: FeColors.primary.withValues(alpha: 0.5),
+          disabledForegroundColor: Colors.white.withValues(alpha: 0.8),
           elevation: 0,
           minimumSize: const Size(0, 40),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -77,11 +96,11 @@ abstract final class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          backgroundColor: AppColors.white,
-          foregroundColor: AppColors.gray700,
+          backgroundColor: FeColors.panel,
+          foregroundColor: FeColors.ink2,
           minimumSize: const Size(0, 40),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          side: const BorderSide(color: AppColors.gray300),
+          side: BorderSide(color: FeColors.line),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -91,73 +110,73 @@ abstract final class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.orange600,
+          foregroundColor: FeColors.primary,
           textStyle: text.labelLarge,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.white,
+        fillColor: FeColors.panel,
         constraints: const BoxConstraints(minHeight: 40),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 10,
         ),
-        hintStyle: text.bodyMedium?.copyWith(color: AppColors.gray400),
+        hintStyle: text.bodyMedium?.copyWith(color: FeColors.ink2),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.gray200),
+          borderSide: BorderSide(color: FeColors.line),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.gray200),
+          borderSide: BorderSide(color: FeColors.line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.orange600, width: 2),
+          borderSide: BorderSide(color: FeColors.primary, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.red600),
+          borderSide: BorderSide(color: FeColors.danger),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.red600, width: 2),
+          borderSide: BorderSide(color: FeColors.danger, width: 2),
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: AppColors.white,
+        backgroundColor: FeColors.panel,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         titleTextStyle: text.titleLarge,
-        contentTextStyle: text.bodyMedium?.copyWith(color: AppColors.gray600),
+        contentTextStyle: text.bodyMedium?.copyWith(color: FeColors.ink2),
       ),
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: AppColors.white,
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: FeColors.panel,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         showDragHandle: false,
-        shape: RoundedRectangleBorder(
+        shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
       ),
-      dividerTheme: const DividerThemeData(
-        color: AppColors.gray200,
+      dividerTheme: DividerThemeData(
+        color: FeColors.line,
         thickness: 1,
         space: 1,
       ),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.orange600,
-        linearTrackColor: AppColors.gray100,
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: FeColors.primary,
+        linearTrackColor: FeColors.page,
         linearMinHeight: 12,
       ),
       checkboxTheme: CheckboxThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        side: const BorderSide(color: AppColors.gray300, width: 1.5),
+        side: BorderSide(color: FeColors.line, width: 1.5),
         fillColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? AppColors.orange600
+              ? FeColors.primary
               : Colors.transparent,
         ),
       ),
@@ -175,7 +194,8 @@ abstract final class AppTheme {
   }
 
   static TextTheme _textTheme() {
-    const onSurface = AppColors.gray900;
+    const onSurface = FeColors.ink;
+    const onSurfaceMuted = FeColors.ink2;
     final base = TextTheme(
       displaySmall: const TextStyle(
         fontSize: 36,
@@ -224,13 +244,13 @@ abstract final class AppTheme {
         fontSize: 14,
         height: 20 / 14,
         fontWeight: FontWeight.w400,
-        color: AppColors.gray600,
+        color: onSurfaceMuted,
       ),
       bodySmall: const TextStyle(
         fontSize: 12,
         height: 16 / 12,
         fontWeight: FontWeight.w400,
-        color: AppColors.gray500,
+        color: onSurfaceMuted,
       ),
       labelLarge: const TextStyle(
         fontSize: 14,
@@ -242,39 +262,19 @@ abstract final class AppTheme {
         height: 16 / 12,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.6,
-        color: AppColors.gray400,
+        color: onSurfaceMuted,
       ),
       labelSmall: const TextStyle(
         fontSize: 10,
         height: 14 / 10,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.5,
-        color: AppColors.gray500,
+        color: onSurfaceMuted,
       ),
     );
+    // Inter — clean, cross-platform, geometric; matches the "Navy
+    // Professional" light redesign direction. The line-height multipliers
+    // above were tuned against Inter's own metrics.
     return GoogleFonts.interTextTheme(base);
   }
-}
-
-/// Overrides for the screens that paint a **white** app bar instead of the
-/// themed dark one — the order detail, the twin, the in-app browser and the
-/// scanner.
-///
-/// Setting `backgroundColor` alone is not enough, and fails invisibly. The
-/// theme's app bar is dark ink with white content, so a screen that repaints
-/// the bar white must recolour everything on it:
-///
-/// * `foregroundColor` handles the icons.
-/// * The **title** needs its own style. `AppBarTheme.titleTextStyle` is set
-///   explicitly (and white), and an explicit title style wins over
-///   `foregroundColor` — so the title alone would stay white on white.
-/// * `systemOverlayStyle` has to flip too, or the status bar keeps drawing
-///   light icons above a white bar and the clock disappears with them.
-abstract final class FeLightAppBar {
-  static const foreground = AppColors.gray900;
-  static const overlay = SystemUiOverlayStyle.dark;
-
-  static TextStyle? title(BuildContext context) =>
-      Theme.of(context).appBarTheme.titleTextStyle
-          ?.copyWith(color: AppColors.gray900);
 }

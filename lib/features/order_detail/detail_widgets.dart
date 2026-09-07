@@ -5,8 +5,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/utils/checklist_status.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/maintenance_record.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 
 /// Work-order status block. Read-only: Start and Complete live on the
@@ -56,25 +57,47 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return TechCard(
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: FeColors.panel,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                LucideIcons.clock,
-                size: 20,
-                color: AppColors.orange600,
+              Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE0F2FE),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.clock,
+                  size: 16,
+                  color: Color(0xFF0284C7),
+                ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
+              const SizedBox(width: 10),
+              const Expanded(
                 child: Text(
                   'Time Tracking',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: FeColors.ink,
                   ),
                 ),
               ),
@@ -89,26 +112,29 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppColors.orange50,
-                borderRadius: BorderRadius.circular(context.radii.lg),
+                color: const Color(0xFFF0F9FF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFBAE6FD)),
               ),
               child: Column(
                 children: [
                   Text(
                     formatElapsed(_elapsed),
-                    style: theme.textTheme.headlineMedium?.copyWith(
+                    style: const TextStyle(
                       fontFamily: 'monospace',
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.orange600,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 26,
+                      color: Color(0xFF0284C7),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
+                  const SizedBox(height: 4),
+                  const Text(
                     'Time Elapsed',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.gray600,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF64748B),
                     ),
                   ),
                 ],
@@ -116,38 +142,36 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
             ),
           ],
           if (widget.queuedComplete && widget.completedDate == null) ...[
-            const SizedBox(height: 16),
-            _CompletedBanner(
+            const SizedBox(height: 14),
+            const _CompletedBanner(
               title: 'Completed — pending sync',
               subtitle: 'Hours will show once this syncs back online.',
             ),
           ],
           if (widget.completedDate != null && widget.actualHours != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _CompletedBanner(
               title: 'Total Hours',
               value: '${widget.actualHours} hrs',
             ),
           ],
           const SizedBox(height: 16),
-          const Divider(height: 1, color: AppColors.gray200),
-          const SizedBox(height: 16),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: _Fact(
+                child: _TrackingFact(
                   label: 'Started',
-                  value: widget.startedDate == null
-                      ? 'Not started'
-                      : formatDateTimeShort(widget.startedDate!),
+                  date: widget.startedDate,
+                  fallback: 'Not started',
                 ),
               ),
+              const SizedBox(width: 12),
               Expanded(
-                child: _Fact(
+                child: _TrackingFact(
                   label: 'Completed',
-                  value: widget.completedDate != null
-                      ? formatDateTimeShort(widget.completedDate!)
-                      : widget.queuedComplete
+                  date: widget.completedDate,
+                  fallback: widget.queuedComplete
                       ? 'Pending sync'
                       : 'Not completed',
                 ),
@@ -156,6 +180,63 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TrackingFact extends StatelessWidget {
+  const _TrackingFact({
+    required this.label,
+    required this.date,
+    required this.fallback,
+  });
+
+  final String label;
+  final DateTime? date;
+  final String fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF64748B),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(
+                LucideIcons.calendar,
+                size: 15,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                date == null
+                    ? fallback
+                    : '${formatDate(date!)}\n${formatTimeOfDay(date!)}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: FeColors.ink,
+                  height: 1.25,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -173,24 +254,31 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = completed
-        ? ('Completed', AppColors.green600)
+    final (label, bg, fg) = completed
+        ? ('Completed', const Color(0xFFECFDF5), const Color(0xFF10B981))
         : queuedComplete
-        ? ('Completed — pending sync', AppColors.green600)
+        ? (
+            'Completed — pending sync',
+            const Color(0xFFECFDF5),
+            const Color(0xFF10B981),
+          )
         : started
-        ? ('In Progress', AppColors.blue600)
-        : ('Not Started', AppColors.gray500);
+        ? ('In Progress', const Color(0xFFEFF6FF), const Color(0xFF0284C7))
+        : ('Not Started', const Color(0xFFF1F5F9), const Color(0xFF64748B));
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color,
+        color: bg,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(color: AppColors.white, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: fg,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -205,47 +293,62 @@ class _CompletedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.green50,
-        borderRadius: BorderRadius.circular(context.radii.lg),
+        color: const Color(0xFFECFDF5),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (value != null) ...[
+                const SizedBox(height: 2),
                 Text(
-                  title,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.gray600,
+                  value!,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF10B981),
                   ),
                 ),
-                if (value != null)
-                  Text(
-                    value!,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.green600,
-                    ),
-                  ),
-                if (subtitle != null)
-                  Text(
-                    subtitle!,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: AppColors.gray500,
-                    ),
-                  ),
               ],
-            ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ],
           ),
-          const Icon(
-            LucideIcons.circleCheck,
-            size: 40,
-            color: AppColors.green600,
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xFFD1FAE5),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              LucideIcons.check,
+              size: 20,
+              color: Color(0xFF10B981),
+            ),
           ),
         ],
       ),
@@ -265,9 +368,9 @@ class ChecklistSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.orange50,
+        color: FeColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(context.radii.card),
-        border: Border.all(color: AppColors.orange100),
+        border: Border.all(color: FeColors.primary.withValues(alpha: 0.1)),
       ),
       child: Row(
         children: [
@@ -275,28 +378,24 @@ class ChecklistSummaryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   'CHECKLIST SUMMARY',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: AppColors.orange600,
+                    color: FeColors.primary,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                AppText.headlineSmall(
                   summary.state.label,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.orange900,
-                  ),
+                  color: FeColors.primary,
+                  weight: FontWeight.w700,
                 ),
                 const SizedBox(height: 4),
-                Text(
+                AppText.bodySmall(
                   '${summary.completedCount}/${summary.totalCount} actionable items complete',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.orange700,
-                  ),
+                  color: FeColors.primary,
                 ),
               ],
             ),
@@ -305,15 +404,13 @@ class ChecklistSummaryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.orange600,
+              color: FeColors.primary,
               borderRadius: BorderRadius.circular(999),
             ),
-            child: Text(
+            child: AppText.caption(
               summary.state.label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: AppColors.white,
-                fontWeight: FontWeight.w700,
-              ),
+              color: Colors.white,
+              weight: FontWeight.w700,
             ),
           ),
         ],
@@ -359,7 +456,7 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
     setState(() => _responding = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
+        content: AppText(
           message ??
               (accept
                   ? 'This task is now yours.'
@@ -382,16 +479,12 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
   @override
   Widget build(BuildContext context) {
     if (!widget.record.isAssignmentPending) return const SizedBox.shrink();
-    final theme = Theme.of(context);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: TechCard(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.amber50,
-        borderRadius: BorderRadius.circular(context.radii.xl),
-        boxShadow: FeElevation.tinted(AppColors.amber600),
-      ),
+      tint: FeColors.warningSoft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -401,33 +494,29 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
                 height: 36,
                 width: 36,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: AppColors.amber100,
+                decoration: BoxDecoration(
+                  color: FeColors.warning.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   LucideIcons.triangleAlert,
                   size: 18,
-                  color: AppColors.amber900,
+                  color: FeColors.warning,
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                'Assignment invitation',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: AppColors.amber900,
-                  fontWeight: FontWeight.w700,
-                ),
+              AppText.titleSmall(
+                'Job Assignment Offer',
+                color: FeColors.warning,
+                weight: FontWeight.w700,
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'You have been invited to this task. Accept it, or decline with a '
-            'reason so it can be reassigned.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.amber800,
-            ),
+          AppText.bodySmall(
+            'You have a pending job assignment for this task. Accept to claim the job, '
+            'or decline with a reason to pass it back to dispatch.',
+            color: FeColors.ink2,
           ),
           if (widget.record.assignmentChain.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -439,25 +528,26 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
               ElevatedButton.icon(
                 onPressed: _responding ? null : () => _respond(accept: true),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.emerald600,
-                  foregroundColor: AppColors.white,
+                  backgroundColor: FeColors.success,
+                  foregroundColor: Colors.white,
                 ),
                 icon: const Icon(LucideIcons.check, size: 16),
-                label: const Text('Accept'),
+                label: const AppText('Accept'),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: _responding ? null : _openDeclineDialog,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.red700,
-                  side: const BorderSide(color: AppColors.red200),
+                  foregroundColor: FeColors.danger,
+                  side: BorderSide(color: FeColors.danger.withValues(alpha: 0.3)),
                 ),
                 icon: const Icon(LucideIcons.x, size: 16),
-                label: const Text('Decline'),
+                label: const AppText('Decline'),
               ),
             ],
           ),
         ],
+        ),
       ),
     );
   }
@@ -488,23 +578,21 @@ class _AssignmentChain extends StatelessWidget {
                   },
                   size: 14,
                   color: switch (entry.status) {
-                    'accepted' => AppColors.emerald600,
-                    'declined' => AppColors.red600,
-                    _ => AppColors.amber600,
+                    'accepted' => FeColors.success,
+                    'declined' => FeColors.danger,
+                    _ => FeColors.warning,
                   },
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
+                  child: AppText.bodySmall(
                     entry.technicianName,
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: AppColors.amber900),
+                    color: FeColors.warning,
                   ),
                 ),
-                Text(
+                AppText.caption(
                   entry.status,
-                  style: Theme.of(context).textTheme.labelSmall
-                      ?.copyWith(color: AppColors.amber800),
+                  color: FeColors.warning,
                 ),
               ],
             ),
@@ -532,16 +620,15 @@ class _DeclineDialogState extends State<_DeclineDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    backgroundColor: AppColors.white,
-    title: const Text('Decline this assignment'),
+    backgroundColor: FeColors.panel,
+    title: const AppText('Decline this assignment'),
     content: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText.bodySmall(
           'Your reason is recorded on the task and shown to the admin. '
           'The task is then offered to the next available technician.',
-          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 12),
         TextField(
@@ -557,17 +644,17 @@ class _DeclineDialogState extends State<_DeclineDialog> {
     actions: [
       TextButton(
         onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Cancel'),
+        child: const AppText('Cancel'),
       ),
       ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.red600,
-          foregroundColor: AppColors.white,
+          backgroundColor: FeColors.danger,
+          foregroundColor: Colors.white,
         ),
         onPressed: _controller.text.trim().isEmpty
             ? null
             : () => Navigator.of(context).pop(_controller.text.trim()),
-        child: const Text('Confirm decline'),
+        child: const AppText('Confirm decline'),
       ),
     ],
   );
@@ -581,21 +668,18 @@ class _Fact extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText.caption(
           label,
-          style: theme.textTheme.labelSmall?.copyWith(color: AppColors.gray500),
+          color: FeColors.ink2,
         ),
         const SizedBox(height: 2),
-        Text(
+        AppText.bodyMedium(
           value,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-            color: AppColors.gray900,
-          ),
+          color: FeColors.ink,
+          weight: FontWeight.w500,
         ),
       ],
     );
@@ -624,13 +708,12 @@ class DetailMetaRow extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 8),
     child: Row(
       children: [
-        Icon(icon, size: 16, color: AppColors.gray600),
+        Icon(icon, size: 16, color: FeColors.ink2),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
+          child: AppText.bodySmall(
             text,
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(color: AppColors.gray600),
+            color: FeColors.ink2,
           ),
         ),
       ],

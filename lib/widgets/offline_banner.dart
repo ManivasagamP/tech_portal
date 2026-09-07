@@ -4,7 +4,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/offline/sync_client.dart';
 import '../state/providers.dart';
-import '../theme/app_colors.dart';
+import '../theme/fe_colors.dart';
+import 'app_text.dart';
 
 /// Slate bar when offline, amber bar when online with a backlog. Renders nothing
 /// when online and the queue is empty.
@@ -42,35 +43,33 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
 
         return Container(
           width: double.infinity,
-          color: offline ? AppColors.slate800 : AppColors.amber50,
+          color: offline ? FeColors.ink : FeColors.warningSoft,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
               Icon(
                 LucideIcons.cloudOff,
                 size: 16,
-                color: offline ? AppColors.white : AppColors.amber800,
+                color: offline ? Colors.white : FeColors.warning,
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
+                child: AppText.bodySmall(
                   text,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: offline ? AppColors.white : AppColors.amber800,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  color: offline ? Colors.white : FeColors.warning,
+                  weight: FontWeight.w600,
                 ),
               ),
               if (!offline && pending > 0)
                 TextButton(
                   onPressed: _syncing ? null : () => _syncNow(sync),
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.amber900,
+                    foregroundColor: FeColors.warning,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     minimumSize: const Size(0, 28),
-                    backgroundColor: AppColors.amber200,
+                    backgroundColor: FeColors.warningSoft,
                   ),
-                  child: Text(_syncing ? 'Syncing…' : 'Sync now'),
+                  child: AppText(_syncing ? 'Syncing…' : 'Sync now'),
                 ),
             ],
           ),

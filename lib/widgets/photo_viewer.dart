@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../theme/app_colors.dart';
+import 'app_text.dart';
+import 'fe_header.dart';
 
 /// Full-screen photo viewer. Photos taken on a job are evidence — a thumbnail
 /// is not enough to check what was captured, so they open pannable and zoomable.
@@ -50,17 +51,16 @@ class _PhotoViewerState extends State<_PhotoViewer> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: AppColors.black,
-        appBar: AppBar(
-          backgroundColor: AppColors.black,
-          foregroundColor: AppColors.white,
+        backgroundColor: Colors.black,
+        appBar: FeHeader(
+          variant: FeHeaderVariant.immersive,
           leading: IconButton(
             icon: const Icon(LucideIcons.x, size: 20),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: widget.urls.length == 1
-              ? null
-              : Text(
+          titleWidget: widget.urls.length == 1
+              ? const SizedBox.shrink()
+              : AppText(
                   '${_index + 1} of ${widget.urls.length}',
                   style: const TextStyle(fontSize: 14),
                 ),
@@ -80,19 +80,22 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                     ? child
                     : const Center(
                         child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation(AppColors.white),
+                          valueColor: AlwaysStoppedAnimation(Colors.white),
                         ),
                       ),
-                errorBuilder: (context, _, _) => const Center(
+                errorBuilder: (context, _, _) => Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(LucideIcons.imageOff,
-                          size: 40, color: AppColors.gray500),
-                      SizedBox(height: 12),
-                      Text(
+                      Icon(
+                        LucideIcons.imageOff,
+                        size: 40,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                      const SizedBox(height: 12),
+                      AppText(
                         'This photo could not be loaded.',
-                        style: TextStyle(color: AppColors.gray400),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                       ),
                     ],
                   ),

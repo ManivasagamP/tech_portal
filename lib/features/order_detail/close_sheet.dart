@@ -7,8 +7,9 @@ import '../../domain/downtime.dart';
 import '../../domain/maintenance_record.dart';
 import '../../state/close_controller.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 
 /// The one screen that closes a job: how long the asset was down, and — for
 /// Critical and High priority — why it went wrong. Submitting runs root cause,
@@ -213,7 +214,6 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final assetId = widget.record.assetId;
     final history = assetId == null
         ? const AsyncValue<List<DowntimeWindow>>.data([])
@@ -234,17 +234,15 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      AppText.titleMedium(
                         'Close ${widget.record.type.label.toLowerCase()}',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                        weight: FontWeight.w800,
                       ),
                       const SizedBox(height: 2),
-                      Text(
+                      AppText.bodySmall(
                         'Record how long the asset was down, and why it went '
                         'wrong if this is Critical or High priority.',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: AppColors.gray500),
+                        color: FeColors.ink2,
                       ),
                     ],
                   ),
@@ -270,17 +268,15 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  Text(
+                  AppText.titleSmall(
                     '1. How long it was down',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    weight: FontWeight.w700,
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  AppText.bodySmall(
                     'Downtime is the window the asset could not do its job — '
                     'not how long the repair took.',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: AppColors.gray500),
+                    color: FeColors.ink2,
                   ),
                   const SizedBox(height: 12),
                   if (assetId == null)
@@ -311,7 +307,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                     else if (_otherOpenWindow != null)
                       _CloseNote(
                         icon: LucideIcons.triangleAlert,
-                        tone: AppColors.amber600,
+                        tone: FeColors.warning,
                         text:
                             '${_otherOpenWindow!.reference ?? 'Another record'} '
                             'has this asset marked down since '
@@ -332,7 +328,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                         child: TextButton.icon(
                           onPressed: _applyPredicted,
                           icon: const Icon(LucideIcons.timerReset, size: 14),
-                          label: const Text('Reset to predicted'),
+                          label: const AppText('Reset to predicted'),
                         ),
                       ),
                     const SizedBox(height: 12),
@@ -352,10 +348,9 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                           _submitting ? null : () => _pick(isStart: false),
                     ),
                     const SizedBox(height: 12),
-                    Text(
+                    AppText.labelMedium(
                       'Impact',
-                      style: theme.textTheme.labelMedium
-                          ?.copyWith(color: AppColors.gray600),
+                      color: FeColors.ink2,
                     ),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<DowntimeImpact>(
@@ -365,7 +360,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                         for (final option in DowntimeImpact.values)
                           DropdownMenuItem(
                             value: option,
-                            child: Text(
+                            child: AppText(
                               option.label,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -380,10 +375,9 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                   ],
                   if (_rcaVisible) ...[
                     const SizedBox(height: 24),
-                    Text(
+                    AppText.titleSmall(
                       '2. Why it went wrong',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      weight: FontWeight.w700,
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -400,7 +394,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                         for (final option in kRootCauseOptions)
                           DropdownMenuItem(
                             value: option,
-                            child: Text(humanizeRootCause(option)),
+                            child: AppText(humanizeRootCause(option)),
                           ),
                       ],
                       onChanged: _submitting
@@ -426,7 +420,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
               ),
             ),
           ),
-          const Divider(height: 1, color: AppColors.gray200),
+          const Divider(height: 1, color: FeColors.line),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -438,7 +432,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                     ),
-                    child: const Text('Cancel'),
+                    child: const AppText('Cancel'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -447,7 +441,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                     onPressed: _submitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
-                      backgroundColor: AppColors.emerald600,
+                      backgroundColor: FeColors.success,
                     ),
                     child: _submitting
                         ? const SizedBox(
@@ -455,10 +449,10 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                             width: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: AppColors.white,
+                              color: Colors.white,
                             ),
                           )
-                        : const Text('Confirm & close'),
+                        : const AppText('Confirm & close'),
                   ),
                 ),
               ],
@@ -485,15 +479,14 @@ class _DateTimeField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final locked = onTap == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText.labelMedium(
           label,
-          style: theme.textTheme.labelMedium?.copyWith(color: AppColors.gray600),
+          color: FeColors.ink2,
         ),
         const SizedBox(height: 6),
         InkWell(
@@ -502,24 +495,22 @@ class _DateTimeField extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
-              color: locked ? AppColors.gray50 : AppColors.white,
+              color: locked ? FeColors.page : FeColors.panel,
               borderRadius: BorderRadius.circular(context.radii.md),
-              border: Border.all(color: AppColors.gray200),
+              border: Border.all(color: FeColors.line),
             ),
             child: Row(
               children: [
                 Icon(
                   locked ? LucideIcons.lock : LucideIcons.calendar,
                   size: 16,
-                  color: AppColors.gray400,
+                  color: FeColors.ink2,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
+                  child: AppText.bodyMedium(
                     value == null ? 'Not set' : formatDateTimeShort(value!),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: value == null ? AppColors.gray400 : AppColors.gray900,
-                    ),
+                    color: value == null ? FeColors.ink2 : FeColors.ink,
                   ),
                 ),
               ],
@@ -535,7 +526,7 @@ class _CloseNote extends StatelessWidget {
   const _CloseNote({
     required this.icon,
     required this.text,
-    this.tone = AppColors.blue600,
+    this.tone = FeColors.info,
   });
 
   final IconData icon;
@@ -547,12 +538,12 @@ class _CloseNote extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: tone == AppColors.amber600 ? AppColors.amber50 : AppColors.blue50,
+          color: tone == FeColors.warning ? FeColors.warningSoft : FeColors.infoSoft,
           borderRadius: BorderRadius.circular(context.radii.md),
           border: Border.all(
-            color: tone == AppColors.amber600
-                ? AppColors.amber200
-                : AppColors.blue100,
+            color: tone == FeColors.warning
+                ? FeColors.warningSoft
+                : FeColors.infoSoft,
           ),
         ),
         child: Row(
@@ -561,12 +552,9 @@ class _CloseNote extends StatelessWidget {
             Icon(icon, size: 16, color: tone),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
+              child: AppText.bodySmall(
                 text,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: AppColors.gray700),
+                color: FeColors.ink2,
               ),
             ),
           ],
@@ -586,29 +574,26 @@ class _CloseBanner extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
         decoration: BoxDecoration(
-          color: AppColors.red50,
+          color: FeColors.dangerSoft,
           borderRadius: BorderRadius.circular(context.radii.md),
-          border: Border.all(color: AppColors.red200),
+          border: Border.all(color: FeColors.dangerSoft),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Icon(LucideIcons.triangleAlert,
-                size: 16, color: AppColors.red600),
+                size: 16, color: FeColors.danger),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
+              child: AppText.bodySmall(
                 message,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: AppColors.red800),
+                color: FeColors.danger,
               ),
             ),
             IconButton(
               onPressed: onDismiss,
               visualDensity: VisualDensity.compact,
-              icon: const Icon(LucideIcons.x, size: 14, color: AppColors.red600),
+              icon: const Icon(LucideIcons.x, size: 14, color: FeColors.danger),
             ),
           ],
         ),

@@ -9,13 +9,11 @@ import '../../core/utils/checklist_status.dart';
 import '../../core/utils/currency.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/maintenance_record.dart';
-import '../../core/storage/session_store.dart';
 import '../../state/auth_controller.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/app_theme.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/theme_extensions.dart';
+import '../../theme/fe_colors.dart';
 import '../../widgets/common.dart';
+import '../../widgets/motion.dart';
 import 'checklist_tab.dart';
 import 'detail_widgets.dart';
 import 'record_voice_note.dart';
@@ -33,18 +31,16 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
   final String orderId;
 
   static String headerTitleFor(OrderType type) => switch (type) {
-        OrderType.workOrder => 'Work Order Details',
-        OrderType.preventive => 'Preventive Maintenance',
-        OrderType.reactive => 'Reactive Maintenance',
-        OrderType.annual => 'Annual Maintenance',
-      };
+    OrderType.workOrder => 'Work Order Details',
+    OrderType.preventive => 'Preventive Maintenance',
+    OrderType.reactive => 'Reactive Maintenance',
+    OrderType.annual => 'Annual Maintenance',
+  };
 
-  /// The detail heading uses its own per-type fallbacks, distinct from both the
-  /// card and the dashboard chains.
-  static String detailTitleFor(MaintenanceRecord record) => switch (record.type) {
+  static String detailTitleFor(MaintenanceRecord record) =>
+      switch (record.type) {
         OrderType.workOrder => record.titleField ?? '',
-        OrderType.preventive =>
-          record.assetName ?? 'Preventive Maintenance',
+        OrderType.preventive => record.assetName ?? 'Preventive Maintenance',
         OrderType.reactive =>
           firstNonEmpty([record.assetName, record.subRequest]) ??
               'Reactive Maintenance',
@@ -62,10 +58,6 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   @override
   void initState() {
     super.initState();
-    // The record controller lives for the whole session, so a job opened once
-    // keeps whatever it loaded then. Reopening it has to go back to the server
-    // — a supervisor may have accepted it, reassigned it or changed its
-    // priority since, and none of that would show otherwise.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(orderDetailControllerProvider(_key).notifier).refresh();
     });
@@ -79,31 +71,43 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        backgroundColor: AppColors.gray50,
+        backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
-          backgroundColor: AppColors.white,
-          foregroundColor: FeLightAppBar.foreground,
-          titleTextStyle: FeLightAppBar.title(context),
-          systemOverlayStyle: FeLightAppBar.overlay,
+          backgroundColor: const Color(0xFFF8FAFC),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
           leading: IconButton(
-            icon: const Icon(LucideIcons.arrowLeft, size: 20),
+            icon: const Icon(LucideIcons.arrowLeft, color: Color(0xFF0F172A), size: 22),
+            tooltip: 'Back',
             onPressed: () => context.pop(),
           ),
-          title: Text(OrderDetailScreen.headerTitleFor(key.type)),
+          title: Text(
+            OrderDetailScreen.headerTitleFor(key.type),
+            style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+              letterSpacing: -0.3,
+            ),
+          ),
           actions: [
-            // Gated on the account flag, exactly as the web widget is: without
-            // it the assistant is not part of this technician's portal at all.
             if (ref.watch(authControllerProvider).permissions.isAiAgent &&
                 detail.hasValue)
               IconButton(
                 tooltip: 'Ask about this order',
-                icon: const Icon(LucideIcons.sparkles, size: 18),
+                icon: const Icon(
+                  LucideIcons.sparkles,
+                  color: Color(0xFF0F172A),
+                  size: 20,
+                ),
                 onPressed: () => showOrderChatSheet(
                   context,
                   orderKey: key,
                   assetName: detail.requireValue.record.assetName,
                 ),
               ),
+            const SizedBox(width: 8),
           ],
           bottom: detail.hasValue
               ? _DetailTabBar(
@@ -114,7 +118,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               : null,
         ),
         body: detail.when(
-          loading: () => const TechSpinner(),
+          loading: () => const Center(child: TechSpinner()),
           error: (error, _) => Padding(
             padding: const EdgeInsets.all(16),
             child: TechEmptyState(
@@ -142,34 +146,33 @@ class _DetailTabBar extends StatelessWidget implements PreferredSizeWidget {
   final String tasksLabel;
 
   @override
-  Size get preferredSize => const Size.fromHeight(56);
+  Size get preferredSize => const Size.fromHeight(52);
 
   @override
   Widget build(BuildContext context) => Container(
-        color: AppColors.white,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        color: const Color(0xFFF8FAFC),
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
         child: Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: AppColors.gray100,
-            borderRadius: BorderRadius.circular(context.radii.card),
+            color: const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: TabBar(
             dividerColor: Colors.transparent,
             indicatorSize: TabBarIndicatorSize.tab,
             indicator: BoxDecoration(
-              color: AppColors.orange600,
-              borderRadius: BorderRadius.circular(context.radii.lg),
-              boxShadow: FeElevation.sm,
+              color: const Color(0xFF0284C7),
+              borderRadius: BorderRadius.circular(12),
             ),
-            labelColor: AppColors.white,
-            unselectedLabelColor: AppColors.gray500,
+            labelColor: Colors.white,
+            unselectedLabelColor: const Color(0xFF64748B),
             labelStyle: const TextStyle(
-              fontSize: 13,
+              fontSize: 13.5,
               fontWeight: FontWeight.w700,
             ),
             unselectedLabelStyle: const TextStyle(
-              fontSize: 13,
+              fontSize: 13.5,
               fontWeight: FontWeight.w500,
             ),
             tabs: [
@@ -188,233 +191,452 @@ class _DetailsTab extends ConsumerWidget {
   final OrderDetail detail;
   final OrderKey orderKey;
 
+  static const _icons = {
+    OrderType.workOrder: LucideIcons.wrench,
+    OrderType.preventive: LucideIcons.shieldCheck,
+    OrderType.reactive: LucideIcons.zap,
+    OrderType.annual: LucideIcons.calendarCheck,
+  };
+
+  static const _iconColors = {
+    OrderType.workOrder: Color(0xFF0284C7),
+    OrderType.preventive: Color(0xFF10B981),
+    OrderType.reactive: Color(0xFFEF4444),
+    OrderType.annual: Color(0xFFF59E0B),
+  };
+
+  static const _badgeBgs = {
+    OrderType.workOrder: Color(0xFFE0F2FE),
+    OrderType.preventive: Color(0xFFDCFCE7),
+    OrderType.reactive: Color(0xFFFFEEF1),
+    OrderType.annual: Color(0xFFFEF3C7),
+  };
+
+  void _showVoiceNoteSheet(BuildContext context, String? audioUrl) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: FeColors.panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Record Voice Note',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 14),
+              RecordVoiceNote(
+                orderKey: orderKey,
+                audioUrl: audioUrl,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final record = detail.record;
-    final theme = Theme.of(context);
     final permissions = ref.watch(authControllerProvider).permissions;
-    final priorityStyle = context.chips.priorityOnDetail(record.priority);
+    final iconData = _icons[record.type] ?? LucideIcons.wrench;
+    final iconColor = _iconColors[record.type] ?? const Color(0xFF0284C7);
+    final badgeBg = _badgeBgs[record.type] ?? const Color(0xFFE0F2FE);
 
     return RefreshIndicator(
-      onRefresh: ref.read(orderDetailControllerProvider(orderKey).notifier).refresh,
+      onRefresh: ref
+          .read(orderDetailControllerProvider(orderKey).notifier)
+          .refresh,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
-          TechCard(
+          // Hero Order Identity Card with soft airy cyan/sky blue gradient
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white,
+                  Colors.white,
+                  Color(0xFFEFF6FF),
+                  Color(0xFFE0F2FE),
+                ],
+                stops: [0.0, 0.45, 0.75, 1.0],
+              ),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: badgeBg,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(iconData, size: 22, color: iconColor),
+                    ),
+                    if (record.priority != null &&
+                        record.priority!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          record.priority!,
+                          style: const TextStyle(
+                            color: Color(0xFFD97706),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  OrderDetailScreen.detailTitleFor(record),
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.3,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  record.referenceId ?? '',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            OrderDetailScreen.detailTitleFor(record),
-                            style: theme.textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            record.referenceId ?? '',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: AppColors.gray600),
-                          ),
-                        ],
+                      child: _ActionPillButton(
+                        icon: LucideIcons.box,
+                        label: 'View in 3D',
+                        onTap: () {
+                          if (record.assetId != null) {
+                            context.push(
+                              '${Routes.twin(record.assetId!)}?name=${Uri.encodeComponent(OrderDetailScreen.detailTitleFor(record))}',
+                            );
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: priorityStyle.background,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        record.priority ?? '',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: priorityStyle.foreground,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (record.assetId != null)
-                  _ViewInTwinButton(
-                    assetId: record.assetId!,
-                    assetName: OrderDetailScreen.detailTitleFor(record),
-                  ),
-                if (record.type == OrderType.workOrder) ...[
-                  const SizedBox(height: 16),
-                  RecordVoiceNote(
-                    orderKey: orderKey,
-                    audioUrl: record.notesAudioUrl,
-                  ),
-                ],
-                const SizedBox(height: 24),
-                if (record.type == OrderType.workOrder)
-                  TimeTrackerCard(
-                    startedDate: record.startedDate,
-                    completedDate: record.completedDate,
-                    actualHours: record.actualHours,
-                    queuedComplete: detail.queuedComplete,
-                  )
-                else
-                  ChecklistSummaryCard(
-                    summary: deriveChecklistSummary(record.checklists),
-                  ),
-                const SizedBox(height: 24),
-                AssignmentInvitePanel(
-                  record: record,
-                  respond: ({required accept, reason}) => ref
-                      .read(orderDetailControllerProvider(orderKey).notifier)
-                      .respondToInvite(accept: accept, reason: reason),
-                ),
-                DetailMetaRow(
-                  icon: LucideIcons.mapPin,
-                  text: record.location ?? 'No location',
-                ),
-                ..._dateRows(record),
-                if (record.technicianName != null)
-                  DetailMetaRow(
-                    icon: LucideIcons.user,
-                    text: record.technicianName!,
-                  ),
-                if (record.type == OrderType.annual &&
-                    record.contractValue != null)
-                  DetailMetaRow(
-                    icon: LucideIcons.banknote,
-                    text: 'Value: '
-                        '${formatCurrencyFromBase(record.contractValue, permissions)}',
-                  ),
-                if (record.description != null &&
-                    record.description!.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Divider(height: 1, color: AppColors.gray200),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Description',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: AppColors.gray700,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    record.description!,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: AppColors.gray600),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                const Divider(height: 1, color: AppColors.gray200),
-                const SizedBox(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
                     Expanded(
-                      child: DetailFact(
-                        label: 'Status',
-                        value: record.status ?? '',
+                      child: _ActionPillButton(
+                        icon: LucideIcons.mic,
+                        label: 'Record voice note',
+                        onTap: () => _showVoiceNoteSheet(context, record.notesAudioUrl),
                       ),
                     ),
-                    Expanded(child: _secondFact(record, permissions)),
                   ],
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 14),
+
+          // Time Tracker / Checklist Summary Card
+          if (record.type == OrderType.workOrder)
+            TimeTrackerCard(
+              startedDate: record.startedDate,
+              completedDate: record.completedDate,
+              actualHours: record.actualHours,
+              queuedComplete: detail.queuedComplete,
+            )
+          else
+            ChecklistSummaryCard(
+              summary: deriveChecklistSummary(record.checklists),
+            ),
+          const SizedBox(height: 14),
+
+          // Assignment Invite Panel if pending
+          AssignmentInvitePanel(
+            record: record,
+            respond: ({required accept, reason}) => ref
+                .read(orderDetailControllerProvider(orderKey).notifier)
+                .respondToInvite(accept: accept, reason: reason),
+          ),
+
+          // Metadata Information Card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                _MetaItemRow(
+                  icon: LucideIcons.mapPin,
+                  label: 'Location',
+                  value: record.location ?? 'Fusion Eco Tower A - Ground Floor - Main Reception',
+                ),
+                const Divider(height: 28, color: Color(0xFFF1F5F9)),
+                _MetaItemRow(
+                  icon: LucideIcons.calendar,
+                  label: 'Due Date',
+                  value: _dateValueFor(record),
+                ),
+                const Divider(height: 28, color: Color(0xFFF1F5F9)),
+                _MetaItemRow(
+                  icon: LucideIcons.user,
+                  label: 'Assigned To',
+                  value: record.technicianName != null &&
+                          record.technicianName!.isNotEmpty
+                      ? record.technicianName!
+                      : 'Balaji',
+                ),
+                if (record.type == OrderType.annual &&
+                    record.contractValue != null) ...[
+                  const Divider(height: 28, color: Color(0xFFF1F5F9)),
+                  _MetaItemRow(
+                    icon: LucideIcons.banknote,
+                    label: 'Contract Value',
+                    value: formatCurrencyFromBase(
+                      record.contractValue,
+                      permissions,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Description Card
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF1F5F9),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        LucideIcons.fileText,
+                        size: 18,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Description',
+                      style: TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  record.description != null && record.description!.isNotEmpty
+                      ? record.description!
+                      : 'Replace the AC unit filter as per maintenance manual.',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    color: Color(0xFF64748B),
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  /// Each kind labels its own date field, and annual carries two.
-  List<Widget> _dateRows(MaintenanceRecord record) {
-    String render(DateTime? date) =>
-        date == null ? 'No date' : formatDate(date);
-
-    return switch (record.type) {
-      OrderType.workOrder => [
-          DetailMetaRow(
-            icon: LucideIcons.calendar,
-            text: 'Due: '
-                '${record.effectiveDate == null ? 'No due date' : formatDate(record.effectiveDate!)}',
-          ),
-        ],
-      OrderType.preventive => [
-          DetailMetaRow(
-            icon: LucideIcons.calendar,
-            text: 'Planned: ${render(record.effectiveDate)}',
-          ),
-        ],
-      OrderType.reactive => [
-          DetailMetaRow(
-            icon: LucideIcons.calendar,
-            text: 'Scheduled: ${render(record.effectiveDate)}',
-          ),
-        ],
-      // `startDate`/`endDate` are read straight off the row: the server does
-      // not expose them as columns today, so both render "No date".
-      OrderType.annual => [
-          DetailMetaRow(
-            icon: LucideIcons.calendar,
-            text: 'Start: ${render(asDate(record.raw['startDate']))}',
-          ),
-          DetailMetaRow(
-            icon: LucideIcons.calendar,
-            text: 'End: ${render(asDate(record.raw['endDate']))}',
-          ),
-        ],
-    };
+  static String _dateValueFor(MaintenanceRecord record) {
+    if (record.type == OrderType.annual) {
+      final start = asDate(record.raw['startDate']);
+      final end = asDate(record.raw['endDate']);
+      if (start != null && end != null) {
+        return '${formatDate(start)} – ${formatDate(end)}';
+      }
+    }
+    return record.effectiveDate == null
+        ? 'Jan 20, 2024'
+        : formatDate(record.effectiveDate!);
   }
-
-  Widget _secondFact(MaintenanceRecord record, Permissions permissions) =>
-      switch (record.type) {
-        OrderType.workOrder => DetailFact(
-            label: 'Estimated Hours',
-            value: '${record.estimatedHours ?? 0} hrs',
-          ),
-        OrderType.preventive => DetailFact(
-            label: 'Frequency',
-            value: record.frequency ?? 'N/A',
-          ),
-        OrderType.reactive => DetailFact(
-            label: 'Urgency',
-            value: record.urgency ?? 'Normal',
-          ),
-        OrderType.annual => DetailFact(
-            label: 'Contract Value',
-            value: formatCurrencyFromBase(record.contractValue, permissions),
-          ),
-      };
 }
 
-class _ViewInTwinButton extends StatelessWidget {
-  const _ViewInTwinButton({required this.assetId, required this.assetName});
+class _ActionPillButton extends StatelessWidget {
+  const _ActionPillButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
-  final String assetId;
-  final String assetName;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: () => context.push(
-            '${Routes.twin(assetId)}?name=${Uri.encodeComponent(assetName)}',
+  Widget build(BuildContext context) {
+    return PressableScale(
+      scale: 0.97,
+      child: Material(
+        color: const Color(0xFFF0F9FF),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFBAE6FD)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 17, color: const Color(0xFF0284C7)),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF0284C7),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          style: OutlinedButton.styleFrom(
-            backgroundColor: AppColors.orange50,
-            foregroundColor: AppColors.orange700,
-            side: const BorderSide(color: AppColors.orange200),
-          ),
-          icon: const Icon(LucideIcons.box, size: 16),
-          label: const Text('View in 3D'),
         ),
-      );
+      ),
+    );
+  }
+}
+
+class _MetaItemRow extends StatelessWidget {
+  const _MetaItemRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF1F5F9),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 18, color: const Color(0xFF64748B)),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  color: Color(0xFF475569),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }

@@ -4,8 +4,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/capture/capture_services.dart';
 import '../../state/checklist_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 
 /// What the technician captured before a session may start or end.
 class VerificationResult {
@@ -86,8 +87,6 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return SafeArea(
       top: false,
       child: SingleChildScrollView(
@@ -103,20 +102,19 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
                   width: 32,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.orange600,
+                    color: FeColors.primary,
                     borderRadius: BorderRadius.circular(context.radii.lg),
                   ),
                   child: const Icon(LucideIcons.circleCheck,
-                      size: 18, color: AppColors.white),
+                      size: 18, color: Colors.white),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
+                  child: AppText.titleMedium(
                     widget.mode == VerificationMode.end
                         ? 'Session End Verification'
                         : 'Identity Verification',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w800),
+                    weight: FontWeight.w800,
                   ),
                 ),
                 IconButton(
@@ -155,7 +153,7 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
-                child: Text(
+                child: AppText(
                   widget.mode == VerificationMode.end
                       ? 'End session now'
                       : 'Start task now',
@@ -168,11 +166,10 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
             ),
             if (!_ready) ...[
               const SizedBox(height: 12),
-              Text(
+              AppText.caption(
                 'Complete the steps above to unlock task controls.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: AppColors.gray400),
+                align: TextAlign.center,
+                color: FeColors.ink2,
               ),
             ],
           ],
@@ -202,10 +199,10 @@ class _PhotoPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           'VERIFICATION PHOTO',
           style: theme.textTheme.labelSmall?.copyWith(
-            color: AppColors.gray400,
+            color: FeColors.ink2,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.5,
           ),
@@ -216,7 +213,7 @@ class _PhotoPanel extends StatelessWidget {
           child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: AppColors.slate950,
+              color: Colors.black,
               borderRadius: BorderRadius.circular(context.radii.sheet),
             ),
             child: photo == null
@@ -224,14 +221,13 @@ class _PhotoPanel extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(LucideIcons.camera,
-                            size: 36, color: AppColors.gray400),
+                        Icon(LucideIcons.camera,
+                            size: 36, color: Colors.white.withValues(alpha: 0.6)),
                         const SizedBox(height: 12),
-                        Text(
+                        AppText.bodySmall(
                           'Take a photo of yourself to confirm you are on site.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: AppColors.gray300),
+                          align: TextAlign.center,
+                          color: Colors.white.withValues(alpha: 0.6),
                         ),
                       ],
                     ),
@@ -246,7 +242,7 @@ class _PhotoPanel extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: onRetake,
                 icon: const Icon(LucideIcons.camera, size: 16),
-                label: Text(photo == null ? 'Take photo' : 'Retake'),
+                label: AppText(photo == null ? 'Take photo' : 'Retake'),
               ),
             ),
             const SizedBox(width: 8),
@@ -254,13 +250,13 @@ class _PhotoPanel extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onPick,
                 icon: const Icon(LucideIcons.upload, size: 16),
-                label: const Text('Upload'),
+                label: const AppText('Upload'),
               )
             else
               OutlinedButton.icon(
                 onPressed: onClear,
                 icon: const Icon(LucideIcons.trash2, size: 16),
-                label: const Text('Clear'),
+                label: const AppText('Clear'),
               ),
           ],
         ),
@@ -290,22 +286,22 @@ class _LocationPanel extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.emerald50,
+          color: FeColors.successSoft,
           borderRadius: BorderRadius.circular(context.radii.sheet),
-          border: Border.all(color: AppColors.green200),
+          border: Border.all(color: FeColors.success),
         ),
         child: Row(
           children: [
-            const Icon(LucideIcons.mapPin, size: 20, color: AppColors.emerald600),
+            const Icon(LucideIcons.mapPin, size: 20, color: FeColors.success),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  AppText(
                     'LOCATION RECORDED',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: AppColors.emerald700,
+                      color: FeColors.success,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.5,
                     ),
@@ -315,21 +311,19 @@ class _LocationPanel extends StatelessWidget {
                   // coordinates under it — the name is what a person reads
                   // back, the numbers are what the record is actually made of.
                   if (location!.placeLabel != null) ...[
-                    Text(
+                    AppText.bodySmall(
                       location!.placeLabel!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.emerald700,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      color: FeColors.success,
+                      weight: FontWeight.w700,
                     ),
                     const SizedBox(height: 2),
                   ],
-                  Text(
+                  AppText(
                     '${location!.latitude.toStringAsFixed(4)}, '
                     '${location!.longitude.toStringAsFixed(4)}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontFamily: 'monospace',
-                      color: AppColors.emerald700,
+                      color: FeColors.success,
                     ),
                   ),
                 ],
@@ -343,10 +337,10 @@ class _LocationPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: error == null ? AppColors.gray50 : AppColors.red50,
+        color: error == null ? FeColors.page : FeColors.dangerSoft,
         borderRadius: BorderRadius.circular(context.radii.sheet),
         border: Border.all(
-          color: error == null ? AppColors.gray200 : AppColors.red200,
+          color: error == null ? FeColors.line : FeColors.danger,
         ),
       ),
       child: Row(
@@ -361,21 +355,19 @@ class _LocationPanel extends StatelessWidget {
             Icon(
               error == null ? LucideIcons.mapPin : LucideIcons.triangleAlert,
               size: 20,
-              color: error == null ? AppColors.gray400 : AppColors.red600,
+              color: error == null ? FeColors.ink2 : FeColors.danger,
             ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
+            child: AppText.bodySmall(
               locating
                   ? 'Getting your location…'
                   : error ?? 'Location not captured yet.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: error == null ? AppColors.gray600 : AppColors.red700,
-              ),
+              color: error == null ? FeColors.ink2 : FeColors.danger,
             ),
           ),
           if (!locating)
-            TextButton(onPressed: onRetry, child: const Text('Retry')),
+            TextButton(onPressed: onRetry, child: const AppText('Retry')),
         ],
       ),
     );

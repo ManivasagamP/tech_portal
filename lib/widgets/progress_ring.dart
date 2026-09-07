@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../theme/fe_colors.dart';
+
 // Deliberately not read from FeMotion via `context.motion`: this ring builds
 // its AnimationController inside initState(), and Theme.of(context) — which
 // that accessor wraps — throws if it's reached before the widget has
@@ -82,10 +84,13 @@ class _ProgressRingState extends State<ProgressRing>
         painter: _RingPainter(
           fraction: indeterminate ? 0 : _sweep.value,
           colors: indeterminate
-              ? const [Color(0xFFE5E7EB), Color(0xFFE5E7EB)]
+              ? [
+                  FeColors.ink2.withValues(alpha: 0.35),
+                  FeColors.ink2.withValues(alpha: 0.35),
+                ]
               : widget.colors,
           strokeWidth: widget.strokeWidth,
-          trackColor: const Color(0xFFF3F4F6),
+          trackColor: FeColors.line,
         ),
         child: widget.child == null
             ? null

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../theme/app_colors.dart';
+import '../theme/fe_colors.dart';
 import '../theme/theme_extensions.dart';
+import 'app_text.dart';
+import 'fe_header.dart';
 import 'motion.dart';
 
 /// The portal's one surface treatment: a soft, floating card. Depth comes
@@ -12,9 +15,13 @@ import 'motion.dart';
 /// background, where the shadow alone reads too weak to separate them).
 ///
 /// [dark] paints the "hero" variant instead: the same card shape filled with
-/// [AppColors.ink] and white text, used for the one or two summary cards per
+/// [FeColors.ink] and white text, used for the one or two summary cards per
 /// screen that should read as the headline rather than a peer of the cards
 /// around it (the dashboard's greeting card, a balance-style total).
+///
+/// [tint] paints a flat colour fill instead — an alert/warning card (e.g.
+/// the assignment-invite panel) that needs to read as its own colour rather
+/// than the neutral panel or the dark hero. Mutually exclusive with [dark].
 class TechCard extends StatelessWidget {
   const TechCard({
     super.key,
@@ -24,8 +31,9 @@ class TechCard extends StatelessWidget {
     this.onTap,
     this.accentTop,
     this.dark = false,
+    this.tint,
     this.radius,
-  });
+  }) : assert(!dark || tint == null, 'dark and tint are mutually exclusive');
 
   final Widget child;
   final EdgeInsets padding;
@@ -33,6 +41,7 @@ class TechCard extends StatelessWidget {
   final VoidCallback? onTap;
   final Color? accentTop;
   final bool dark;
+  final Color? tint;
   final double? radius;
 
   @override
@@ -45,10 +54,12 @@ class TechCard extends StatelessWidget {
     // draw at all.
     final card = Container(
       decoration: BoxDecoration(
-        color: dark ? AppColors.ink : AppColors.white,
+        color: dark ? FeColors.ink : (tint ?? FeColors.panel),
         borderRadius: r,
         border: borderColor == null ? null : Border.all(color: borderColor!),
-        boxShadow: dark ? FeElevation.floating : FeElevation.soft,
+        boxShadow: dark
+            ? FeElevation.floating
+            : (tint != null ? FeElevation.tinted(tint!) : FeElevation.soft),
       ),
       child: ClipRRect(
         borderRadius: r,
@@ -76,12 +87,12 @@ class TechCard extends StatelessWidget {
   }
 }
 
-/// The portal's universal loader: a 32 px orange partial ring.
+/// The portal's universal technician loader.
 class TechSpinner extends StatelessWidget {
   const TechSpinner({
     super.key,
     this.size = 32,
-    this.color = AppColors.orange600,
+    this.color = FeColors.primary,
   });
 
   final double size;
@@ -89,15 +100,27 @@ class TechSpinner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: SizedBox(
-      width: size,
-      height: size,
-      child: CircularProgressIndicator(
-        strokeWidth: 2,
-        valueColor: AlwaysStoppedAnimation(color),
-      ),
-    ),
-  );
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                strokeWidth: 2.5,
+                strokeCap: StrokeCap.round,
+                valueColor: AlwaysStoppedAnimation(color),
+              ),
+              if (size >= 28)
+                Icon(
+                  LucideIcons.wrench,
+                  size: size * 0.42,
+                  color: color.withValues(alpha: 0.65),
+                ),
+            ],
+          ),
+        ),
+      );
 }
 
 class TechEmptyState extends StatelessWidget {
@@ -106,7 +129,7 @@ class TechEmptyState extends StatelessWidget {
     required this.icon,
     required this.title,
     this.subtitle,
-    this.iconColor = AppColors.gray400,
+    this.iconColor = FeColors.ink2,
     this.iconSize = 48,
   });
 
@@ -132,18 +155,17 @@ class TechEmptyState extends StatelessWidget {
           child: Icon(icon, size: iconSize * 0.6, color: iconColor),
         ),
         const SizedBox(height: 16),
-        Text(
+        AppText.bodyMedium(
           title,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: AppColors.gray600, fontWeight: FontWeight.w600),
+          align: TextAlign.center,
+          color: FeColors.ink2,
+          weight: FontWeight.w600,
         ),
         if (subtitle != null) ...[
           const SizedBox(height: 4),
-          Text(
+          AppText.bodySmall(
             subtitle!,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
+            align: TextAlign.center,
           ),
         ],
       ],
@@ -176,7 +198,7 @@ class TechChip extends StatelessWidget {
       color: style.background,
       borderRadius: borderRadius ?? BorderRadius.circular(999),
     ),
-    child: Text(
+    child: AppText(
       uppercase ? label.toUpperCase() : label,
       style: Theme.of(context).textTheme.labelSmall?.copyWith(
         color: style.foreground,
@@ -222,7 +244,7 @@ class PhasePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(title)),
+    appBar: FeHeader(title: title),
     body: Padding(
       padding: const EdgeInsets.all(16),
       child: TechEmptyState(

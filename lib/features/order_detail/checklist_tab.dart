@@ -8,8 +8,9 @@ import '../../domain/checklist.dart';
 import '../../domain/maintenance_record.dart';
 import '../../state/checklist_controller.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 import 'checklist_item_sheet.dart';
 import 'close_sheet.dart';
@@ -31,7 +32,7 @@ class ChecklistTab extends ConsumerWidget {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        backgroundColor: AppColors.white,
+        backgroundColor: FeColors.panel,
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(context).height * 0.92,
         ),
@@ -60,7 +61,7 @@ class ChecklistTab extends ConsumerWidget {
         .addOther(description);
     if (message != null && context.mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message.text)));
+          .showSnackBar(SnackBar(content: AppText(message.text)));
     }
   }
 
@@ -95,7 +96,7 @@ class ChecklistTab extends ConsumerWidget {
                       .toggle(index);
                   if (message != null && context.mounted) {
                     ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text(message.text)));
+                        .showSnackBar(SnackBar(content: AppText(message.text)));
                   }
                 },
               ),
@@ -104,7 +105,7 @@ class ChecklistTab extends ConsumerWidget {
         OutlinedButton.icon(
           onPressed: state.addingOther ? null : () => _addOther(context, ref),
           icon: const Icon(LucideIcons.plus, size: 16),
-          label: const Text('Add Other Task'),
+          label: const AppText('Add Other Task'),
         ),
         const SizedBox(height: 16),
         _CloseSection(items: items, record: record, orderKey: orderKey),
@@ -120,7 +121,6 @@ class _ProgressHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final complete =
         summary.totalCount > 0 && summary.completedCount == summary.totalCount;
 
@@ -141,17 +141,13 @@ class _ProgressHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    AppText.titleSmall(
                       'Checklist',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                      weight: FontWeight.w600,
                     ),
-                    Text(
+                    AppText.caption(
                       complete ? 'All tasks completed' : 'Track progress',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: AppColors.gray500,
-                      ),
+                      color: FeColors.ink2,
                     ),
                   ],
                 ),
@@ -164,15 +160,13 @@ class _ProgressHeader extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: complete
                       ? context.accents.emerald.background
-                      : AppColors.gray50,
+                      : FeColors.page,
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
+                child: AppText.caption(
                   '${summary.completedCount}/${summary.totalCount}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: complete ? AppColors.emerald700 : AppColors.gray700,
-                  ),
+                  weight: FontWeight.w700,
+                  color: complete ? FeColors.success : FeColors.ink2,
                 ),
               ),
             ],
@@ -183,16 +177,14 @@ class _ProgressHeader extends StatelessWidget {
             child: LinearProgressIndicator(
               value: summary.progress,
               minHeight: 8,
-              backgroundColor: AppColors.gray100,
-              valueColor: const AlwaysStoppedAnimation(AppColors.orange600),
+              backgroundColor: FeColors.page,
+              valueColor: const AlwaysStoppedAnimation(FeColors.primary),
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          AppText.bodySmall(
             summary.state.label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.gray600,
-            ),
+            color: FeColors.ink2,
           ),
         ],
       ),
@@ -215,7 +207,6 @@ class _ChecklistRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final noteCount =
         item.comments.length + (item.legacyComment == null ? 0 : 1);
 
@@ -246,27 +237,25 @@ class _ChecklistRow extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(
+                      child: AppText.bodyMedium(
                         shortChecklistTitle(item.title),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: item.isCompleted
-                              ? AppColors.gray400
-                              : AppColors.gray900,
-                        ),
+                        weight: FontWeight.w600,
+                        color: item.isCompleted
+                            ? FeColors.ink2
+                            : FeColors.ink,
                       ),
                     ),
                     if (item.isOther)
                       const _RowChip(
                         label: 'Other',
-                        background: AppColors.slate100,
-                        foreground: AppColors.slate700,
+                        background: FeColors.page,
+                        foreground: FeColors.ink2,
                       ),
                     if (item.isRunning)
                       const _RowChip(
                         label: 'Running…',
-                        background: AppColors.amber50,
-                        foreground: AppColors.amber900,
+                        background: FeColors.warningSoft,
+                        foreground: FeColors.warning,
                         icon: LucideIcons.clock,
                       ),
                   ],
@@ -299,7 +288,7 @@ class _ChecklistRow extends StatelessWidget {
           const Icon(
             LucideIcons.chevronRight,
             size: 16,
-            color: AppColors.gray400,
+            color: FeColors.ink2,
           ),
         ],
       ),
@@ -335,7 +324,7 @@ class _RowChip extends StatelessWidget {
           Icon(icon, size: 10, color: foreground),
           const SizedBox(width: 4),
         ],
-        Text(
+        AppText(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             fontSize: 10,
@@ -358,12 +347,11 @@ class _Meta extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(icon, size: 12, color: AppColors.gray400),
+      Icon(icon, size: 12, color: FeColors.ink2),
       const SizedBox(width: 4),
-      Text(
+      AppText.caption(
         label,
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(color: AppColors.gray500),
+        color: FeColors.ink2,
       ),
     ],
   );
@@ -403,7 +391,7 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
       context: context,
       isScrollControlled: true,
       isDismissible: false,
-      backgroundColor: AppColors.white,
+      backgroundColor: FeColors.panel,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.92,
       ),
@@ -427,13 +415,12 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
 
     if (message != null && mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+          .showSnackBar(SnackBar(content: AppText(message)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final mandatory = widget.record.isChecklistMandatory;
 
     // Mirrors the server's close guard: at least one item done — an "Other"
@@ -445,12 +432,12 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
 
     if (widget.record.completedDate != null) {
       return const TechCard(
-        borderColor: AppColors.green200,
+        borderColor: FeColors.successSoft,
         child: Row(
           children: [
-            Icon(LucideIcons.circleCheck, size: 18, color: AppColors.green600),
+            Icon(LucideIcons.circleCheck, size: 18, color: FeColors.success),
             SizedBox(width: 12),
-            Expanded(child: Text('This job is closed.')),
+            Expanded(child: AppText('This job is closed.')),
           ],
         ),
       );
@@ -458,19 +445,17 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
 
     if (!canClose) {
       return TechCard(
-        borderColor: AppColors.gray200,
+        borderColor: FeColors.line,
         child: Row(
           children: [
-            const Icon(LucideIcons.info, size: 18, color: AppColors.gray400),
+            const Icon(LucideIcons.info, size: 18, color: FeColors.ink2),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
+              child: AppText.bodySmall(
                 mandatory
                     ? 'Complete every task before this job can be closed.'
                     : 'Complete at least one task before this job can be closed.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.gray600,
-                ),
+                color: FeColors.ink2,
               ),
             ),
           ],
@@ -479,7 +464,7 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
     }
 
     return TechCard(
-      borderColor: AppColors.green200,
+      borderColor: FeColors.successSoft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -488,15 +473,13 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
               const Icon(
                 LucideIcons.circleCheck,
                 size: 18,
-                color: AppColors.green600,
+                color: FeColors.success,
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
+                child: AppText.bodySmall(
                   'This job is ready to close.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.gray700,
-                  ),
+                  color: FeColors.ink2,
                 ),
               ),
             ],
@@ -517,9 +500,9 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
             onPressed: _openCloseSheet,
             style: ElevatedButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
-              backgroundColor: AppColors.emerald600,
+              backgroundColor: FeColors.success,
             ),
-            child: const Text('Completed Works'),
+            child: const AppText('Completed Works'),
           ),
         ],
       ),
@@ -545,8 +528,8 @@ class _AddOtherDialogState extends State<_AddOtherDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    backgroundColor: AppColors.white,
-    title: const Text('Add other task'),
+    backgroundColor: FeColors.panel,
+    title: const AppText('Add other task'),
     content: TextField(
       controller: _controller,
       autofocus: true,
@@ -557,13 +540,13 @@ class _AddOtherDialogState extends State<_AddOtherDialog> {
     actions: [
       TextButton(
         onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Cancel'),
+        child: const AppText('Cancel'),
       ),
       ElevatedButton(
         onPressed: _controller.text.trim().isEmpty
             ? null
             : () => Navigator.of(context).pop(_controller.text.trim()),
-        child: const Text('Add'),
+        child: const AppText('Add'),
       ),
     ],
   );

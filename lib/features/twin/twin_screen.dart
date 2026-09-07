@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -10,9 +9,10 @@ import '../../app/env.dart';
 import '../../core/storage/session_store.dart';
 import '../../state/auth_controller.dart';
 import '../../state/providers.dart';
-import '../../theme/app_theme.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
+import '../../widgets/fe_header.dart';
 
 /// The 3D asset view, shown by loading the portal's own twin page.
 ///
@@ -76,7 +76,7 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
 
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(AppColors.slate950)
+      ..setBackgroundColor(Colors.black)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (url) async {
@@ -165,31 +165,23 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
     final controller = _controller;
 
     return Scaffold(
-      backgroundColor: AppColors.slate950,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        foregroundColor: FeLightAppBar.foreground,
-        titleTextStyle: FeLightAppBar.title(context),
-        systemOverlayStyle: FeLightAppBar.overlay,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, size: 20),
-          onPressed: () => context.pop(),
-        ),
-        title: Column(
+      backgroundColor: Colors.black,
+      appBar: FeHeader(
+        showBack: true,
+        titleWidget: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
+            AppText.titleSmall(
               widget.assetName ?? 'Asset Location',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              weight: FontWeight.w700,
             ),
-            Text(
+            AppText(
               '3D VIEW',
               style: theme.textTheme.labelSmall?.copyWith(
-                color: AppColors.gray400,
+                color: FeColors.ink2,
                 letterSpacing: 1.5,
                 fontWeight: FontWeight.w700,
               ),
@@ -211,9 +203,9 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
                 if (controller != null) WebViewWidget(controller: controller),
                 if (_loading)
                   const ColoredBox(
-                    color: AppColors.slate950,
+                    color: Colors.black,
                     child: SizedBox.expand(
-                      child: TechSpinner(color: AppColors.white),
+                      child: TechSpinner(color: Colors.white),
                     ),
                   ),
               ],

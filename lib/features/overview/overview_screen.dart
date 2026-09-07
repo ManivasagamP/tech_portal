@@ -1,19 +1,19 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../app/router.dart';
 import '../../domain/maintenance_record.dart';
 import '../../domain/technician_insights.dart';
 import '../../state/overview_controller.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/theme_extensions.dart';
+import '../../state/providers.dart';
+import '../../theme/fe_colors.dart';
 import '../../widgets/common.dart';
-import '../../widgets/tech_header.dart';
 
-/// Analytics for the signed-in technician: one tab per maintenance type, each
-/// showing what they have handled this year, what is open this month, and a
-/// twelve-month bar chart.
+/// Analytics for the signed-in technician: tabs per maintenance type,
+/// year-to-date and in-progress stat cards, and 12-month volume bar chart.
 class OverviewScreen extends ConsumerStatefulWidget {
   const OverviewScreen({super.key});
 
@@ -24,12 +24,12 @@ class OverviewScreen extends ConsumerStatefulWidget {
 class _OverviewScreenState extends ConsumerState<OverviewScreen> {
   OrderType _tab = OrderType.workOrder;
 
-  /// The chart fill per tab, matching `OverviewChart.tsx` exactly.
-  static const _fill = {
-    OrderType.workOrder: AppColors.blue600,
-    OrderType.preventive: AppColors.emerald600,
-    OrderType.reactive: AppColors.red600,
-    OrderType.annual: AppColors.amber600,
+  /// The chart fill gradient colors per tab.
+  static const _chartGradients = {
+    OrderType.workOrder: [Color(0xFF60A5FA), Color(0xFF2563EB)],
+    OrderType.reactive: [Color(0xFFF87171), Color(0xFFDC2626)],
+    OrderType.preventive: [Color(0xFF4ADE80), Color(0xFF16A34A)],
+    OrderType.annual: [Color(0xFFFBBF24), Color(0xFFD97706)],
   };
 
   static String _totalLabel(OrderType type) => switch (type) {
@@ -41,87 +41,245 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
 
   static String _tabLabel(OrderType type) => switch (type) {
     OrderType.workOrder => 'Work Order',
-    OrderType.preventive => 'Preventive',
     OrderType.reactive => 'Reactive',
+    OrderType.preventive => 'Preventive',
     OrderType.annual => 'Annual',
   };
 
   static String _trendLabel(OrderType type) => switch (type) {
     OrderType.workOrder => 'Work Order Trends',
-    OrderType.preventive => 'Preventive Trends',
     OrderType.reactive => 'Reactive Trends',
+    OrderType.preventive => 'Preventive Trends',
     OrderType.annual => 'Annual Trends',
   };
 
   @override
   Widget build(BuildContext context) {
     final insights = ref.watch(technicianInsightsProvider);
-    final color = _fill[_tab]!;
+    final unseenCount =
+        ref.watch(unseenNotificationCountProvider).valueOrNull ?? 0;
+    final gradient = _chartGradients[_tab]!;
 
     return Scaffold(
-      backgroundColor: AppColors.gray50,
-      appBar: const TechHeader(title: 'Analytics Overview'),
-      body: RefreshIndicator(
-        onRefresh: () async => ref.invalidate(technicianInsightsProvider),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _TypeTabs(
-              selected: _tab,
-              onSelect: (type) => setState(() => _tab = type),
-              label: _tabLabel,
-            ),
-            const SizedBox(height: 16),
-            // The web page reads `insights.monthlyTrends` unguarded and shows
-            // a blank screen when the fetch fails (§10 row 4). Here a failure
-            // is a card that says so and can be pulled to retry.
-            if (insights.isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 48),
-                child: TechSpinner(),
-              )
-            else if (insights.hasError)
-              const TechEmptyState(
-                icon: LucideIcons.circleAlert,
-                title: 'Could not load your figures',
-                subtitle: 'Pull down to try again.',
-              )
-            else ...[
-              _StatCard(
-                title: _totalLabel(_tab),
-                value: insights.requireValue.totalsFor(_tab).total,
-                caption: 'This Year',
-                accent: AppColors.green500,
-                icon: LucideIcons.trendingUp,
-                iconColor: AppColors.green600,
-                iconBackground: AppColors.green50,
+      backgroundColor: FeColors.page,
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: () async => ref.invalidate(technicianInsightsProvider),
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            children: [
+              // Top Header with title, subtitle, and circular action buttons
+              _TopBar(
+                unseenNotifications: unseenCount,
+                onCalendar: () => context.push(Routes.calendar),
+                onNotifications: () => context.push(Routes.notifications),
               ),
               const SizedBox(height: 16),
-              _StatCard(
-                title: 'Work In Progress',
-                value: insights.requireValue.inProgressFor(_tab),
-                caption: 'This Month',
-                accent: AppColors.orange600,
-                icon: LucideIcons.activity,
-                iconColor: AppColors.orange600,
-                iconBackground: AppColors.orange50,
+
+              // Filter Tabs (Work Order, Reactive, Preventive, Annual)
+              _TypeTabs(
+                selected: _tab,
+                onSelect: (type) => setState(() => _tab = type),
+                label: _tabLabel,
               ),
               const SizedBox(height: 16),
-              _TrendCard(
-                title: _trendLabel(_tab),
-                trends: insights.requireValue.monthlyTrends,
-                type: _tab,
-                color: color,
-              ),
+
+              if (insights.isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: TechSpinner(),
+                )
+              else if (insights.hasError)
+                const TechEmptyState(
+                  icon: LucideIcons.circleAlert,
+                  title: 'Could not load your figures',
+                  subtitle: 'Pull down to try again.',
+                )
+              else ...[
+                // Side-by-side 2 Metric Stat Cards with soft tint gradients
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatCard(
+                        title: _totalLabel(_tab),
+                        value: insights.requireValue.totalsFor(_tab).total,
+                        caption: 'This Year',
+                        icon: LucideIcons.trendingUp,
+                        iconColor: const Color(0xFF10B981),
+                        iconBackground: const Color(0xFFDCFCE7),
+                        tintColor: const Color(0xFFDCFCE7),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatCard(
+                        title: 'Work In Progress',
+                        value: insights.requireValue.inProgressFor(_tab),
+                        caption: 'This Month',
+                        icon: LucideIcons.activity,
+                        iconColor: const Color(0xFF0284C7),
+                        iconBackground: const Color(0xFFDBEAFE),
+                        tintColor: const Color(0xFFE0F2FE),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Trends Chart Card
+                _TrendCard(
+                  title: _trendLabel(_tab),
+                  trends: insights.requireValue.monthlyTrends,
+                  type: _tab,
+                  gradient: gradient,
+                ),
+              ],
+              const SizedBox(height: 16),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// The four maintenance types, laid out as one row of equal segments.
+/// Header with Analytics Overview title, subtitle, and circular action buttons
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.unseenNotifications,
+    required this.onCalendar,
+    required this.onNotifications,
+  });
+
+  final int unseenNotifications;
+  final VoidCallback onCalendar;
+  final VoidCallback onNotifications;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Analytics Overview',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: FeColors.ink,
+                  letterSpacing: -0.5,
+                  height: 1.1,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Track and analyze your work orders',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: FeColors.ink2,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        _CircleActionButton(
+          icon: LucideIcons.calendarDays,
+          tooltip: 'Calendar',
+          onTap: onCalendar,
+        ),
+        const SizedBox(width: 8),
+        _CircleActionButton(
+          icon: LucideIcons.bell,
+          tooltip: 'Notifications',
+          badge: unseenNotifications,
+          onTap: onNotifications,
+        ),
+      ],
+    );
+  }
+}
+
+class _CircleActionButton extends StatelessWidget {
+  const _CircleActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Material(
+      color: FeColors.panel,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 19, color: FeColors.ink),
+        ),
+      ),
+    );
+
+    if (badge <= 0) return button;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        button,
+        Positioned(
+          top: -2,
+          right: -2,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            constraints: const BoxConstraints(minWidth: 16),
+            decoration: BoxDecoration(
+              color: FeColors.danger,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: FeColors.panel, width: 1.5),
+            ),
+            child: Text(
+              badge > 9 ? '9+' : '$badge',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 9,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The four maintenance types laid out as a single rounded pill bar
 class _TypeTabs extends StatelessWidget {
   const _TypeTabs({
     required this.selected,
@@ -133,8 +291,6 @@ class _TypeTabs extends StatelessWidget {
   final ValueChanged<OrderType> onSelect;
   final String Function(OrderType) label;
 
-  /// Web tab order — work order, reactive, preventive, annual — which is not
-  /// the enum's own order, so it is written out.
   static const _order = [
     OrderType.workOrder,
     OrderType.reactive,
@@ -143,13 +299,20 @@ class _TypeTabs extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) => TechCard(
-    padding: const EdgeInsets.all(4),
-    child: Container(
+  Widget build(BuildContext context) {
+    return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.gray100,
-        borderRadius: BorderRadius.circular(context.radii.lg),
+        color: FeColors.panel,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -159,17 +322,23 @@ class _TypeTabs extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => onSelect(type),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
+                  duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
                     color: type == selected
-                        ? AppColors.orange600
+                        ? const Color(0xFF0284C7)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(22),
                     boxShadow: type == selected
-                        ? FeElevation.tinted(AppColors.orange600)
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF0284C7)
+                                  .withValues(alpha: 0.25),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
                         : null,
                   ),
                   child: Text(
@@ -177,11 +346,11 @@ class _TypeTabs extends StatelessWidget {
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontSize: 11,
+                    style: TextStyle(
+                      fontSize: 12.5,
                       color: type == selected
-                          ? AppColors.white
-                          : AppColors.gray500,
+                          ? Colors.white
+                          : const Color(0xFF64748B),
                       fontWeight: type == selected
                           ? FontWeight.w700
                           : FontWeight.w500,
@@ -192,36 +361,58 @@ class _TypeTabs extends StatelessWidget {
             ),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
 
+/// Stat card matching the screenshot's soft gradient tint
 class _StatCard extends StatelessWidget {
   const _StatCard({
     required this.title,
     required this.value,
     required this.caption,
-    required this.accent,
     required this.icon,
     required this.iconColor,
     required this.iconBackground,
+    required this.tintColor,
   });
 
   final String title;
   final int value;
   final String caption;
-  final Color accent;
   final IconData icon;
   final Color iconColor;
   final Color iconBackground;
+  final Color tintColor;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return TechCard(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+      decoration: BoxDecoration(
+        color: FeColors.panel,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white,
+            Colors.white,
+            tintColor,
+          ],
+          stops: const [0.0, 0.72, 1.0],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             height: 44,
@@ -230,38 +421,39 @@ class _StatCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: iconBackground,
               shape: BoxShape.circle,
-              boxShadow: FeElevation.tinted(iconColor),
             ),
-            child: Icon(icon, size: 20, color: iconColor),
+            child: Icon(icon, size: 22, color: iconColor),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.gray500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '$value',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.gray900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  caption,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: AppColors.gray400,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 12),
+          Text(
+            '$value',
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: FeColors.ink,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF475569),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            caption,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF94A3B8),
+              fontWeight: FontWeight.w400,
             ),
           ),
         ],
@@ -270,63 +462,109 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+/// Trend Card containing header, filter dropdown button, chart, and bottom pill
 class _TrendCard extends StatelessWidget {
   const _TrendCard({
     required this.title,
     required this.trends,
     required this.type,
-    required this.color,
+    required this.gradient,
   });
 
   final String title;
   final List<MonthlyTrend> trends;
   final OrderType type;
-  final Color color;
+  final List<Color> gradient;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return TechCard(
+    return Container(
       padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: FeColors.panel,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.gray700,
-              fontWeight: FontWeight.w500,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: FeColors.ink,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Monthly',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF475569),
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(
+                      LucideIcons.chevronDown,
+                      size: 14,
+                      color: Color(0xFF475569),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           SizedBox(
-            height: 220,
+            height: 240,
             child: trends.isEmpty
-                ? Center(
+                ? const Center(
                     child: Text(
                       'No activity recorded this year.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.gray500,
+                      style: TextStyle(
+                        color: FeColors.ink2,
+                        fontSize: 13,
                       ),
                     ),
                   )
-                : _TrendChart(trends: trends, type: type, color: color),
+                : _TrendChart(trends: trends, type: type, gradient: gradient),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.gray50,
-                borderRadius: BorderRadius.circular(999),
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFF1F5F9)),
               ),
               child: Text(
-                // The endpoint always reports the current year off the server
-                // clock, so the caption states which year rather than offering
-                // a picker that cannot change anything.
                 'Monthly Order Volume (${DateTime.now().year})',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: AppColors.gray500,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF64748B),
                 ),
               ),
             ),
@@ -341,32 +579,35 @@ class _TrendChart extends StatelessWidget {
   const _TrendChart({
     required this.trends,
     required this.type,
-    required this.color,
+    required this.gradient,
   });
 
   final List<MonthlyTrend> trends;
   final OrderType type;
-  final Color color;
+  final List<Color> gradient;
 
   @override
   Widget build(BuildContext context) {
     final counts = [for (final t in trends) t.countFor(type)];
     final peak = counts.fold<int>(0, (a, b) => a > b ? a : b);
-    // A flat year of zeros would otherwise give the chart no range to draw in.
-    final maxY = (peak == 0 ? 4 : peak * 1.25).toDouble();
+    final rawMaxY = (peak == 0 ? 4 : peak * 1.2).toDouble();
+    // Round to nearest multiple of 5 for clean Y-axis gridlines
+    final maxY = ((rawMaxY / 5).ceil() * 5).toDouble().clamp(10.0, 1000.0);
 
     return BarChart(
-      duration: const Duration(milliseconds: 650),
+      duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
       BarChartData(
         maxY: maxY,
         alignment: BarChartAlignment.spaceAround,
         gridData: FlGridData(
+          show: true,
           drawVerticalLine: false,
+          horizontalInterval: 5,
           getDrawingHorizontalLine: (_) => const FlLine(
-            color: AppColors.gray200,
+            color: Color(0xFFE2E8F0),
             strokeWidth: 1,
-            dashArray: [3, 3],
+            dashArray: [4, 4],
           ),
         ),
         borderData: FlBorderData(show: false),
@@ -376,18 +617,16 @@ class _TrendChart extends StatelessWidget {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 28,
+              reservedSize: 26,
+              interval: 5,
               getTitlesWidget: (value, meta) {
-                // Only whole orders exist, so fractional gridline labels are
-                // noise.
-                if (value != value.roundToDouble()) {
-                  return const SizedBox.shrink();
-                }
+                if (value % 5 != 0) return const SizedBox.shrink();
                 return Text(
                   '${value.toInt()}',
                   style: const TextStyle(
-                    color: AppColors.gray500,
-                    fontSize: 10,
+                    color: Color(0xFF94A3B8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
                   ),
                 );
               },
@@ -396,23 +635,23 @@ class _TrendChart extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 24,
+              reservedSize: 28,
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
                 if (index < 0 || index >= trends.length) {
                   return const SizedBox.shrink();
                 }
                 final month = trends[index].month;
+                final shortMonth =
+                    month.length > 3 ? month.substring(0, 3) : month;
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    // Node hands back "Sept", not "Sep", which is wide enough
-                    // to run into its neighbours on a phone. Twelve labels
-                    // across 570 px only fit at three characters.
-                    month.length > 3 ? month.substring(0, 3) : month,
+                    shortMonth,
                     style: const TextStyle(
-                      color: AppColors.gray500,
-                      fontSize: 9,
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 );
@@ -422,8 +661,8 @@ class _TrendChart extends StatelessWidget {
         ),
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (_) => AppColors.white,
-            tooltipBorder: const BorderSide(color: AppColors.gray200),
+            getTooltipColor: (_) => FeColors.panel,
+            tooltipBorder: const BorderSide(color: Color(0xFFE2E8F0)),
             tooltipPadding: const EdgeInsets.symmetric(
               horizontal: 12,
               vertical: 6,
@@ -432,7 +671,7 @@ class _TrendChart extends StatelessWidget {
                 BarTooltipItem(
                   '${trends[groupIndex].month}\n',
                   const TextStyle(
-                    color: AppColors.gray500,
+                    color: FeColors.ink2,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -440,7 +679,7 @@ class _TrendChart extends StatelessWidget {
                     TextSpan(
                       text: '${rod.toY.toInt()}',
                       style: TextStyle(
-                        color: color,
+                        color: gradient.last,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
@@ -459,13 +698,11 @@ class _TrendChart extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    // Same hue the web uses for this tab — only the shading is
-                    // new, so the "match the web" invariant on [color] holds.
-                    colors: [color.withValues(alpha: 0.55), color],
+                    colors: gradient,
                   ),
                   width: 14,
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(6),
+                    top: Radius.circular(7),
                   ),
                 ),
               ],

@@ -84,7 +84,7 @@ class OrderDetailController
           ? null
           : 'Saved offline. It will send when you are back online.';
     } catch (e) {
-      return 'Failed to respond to this assignment invite.';
+      return 'Failed to respond to this job assignment offer.';
     }
   }
 }

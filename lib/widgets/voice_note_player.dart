@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../theme/app_colors.dart';
+import '../theme/fe_colors.dart';
+import 'app_text.dart';
 
 /// A recording made offline carries a placeholder token instead of a URL until
 /// the queue uploads its bytes. Pointing a player at that token would request a
@@ -105,21 +106,21 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.white,
-        title: const Text('Delete voice note?'),
-        content: const Text('This cannot be undone.'),
+        backgroundColor: FeColors.panel,
+        title: const AppText('Delete voice note?'),
+        content: const AppText('This cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.red600,
-              foregroundColor: AppColors.white,
+              backgroundColor: FeColors.danger,
+              foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: const AppText('Delete'),
           ),
         ],
       ),
@@ -138,20 +139,18 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
       return Row(
         children: [
           const Icon(LucideIcons.cloudUpload,
-              size: 14, color: AppColors.amber800),
+              size: 14, color: FeColors.warning),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(
+            child: AppText.caption(
               'Saved on this device — uploads when you are back online',
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: AppColors.amber800),
+              color: FeColors.warning,
             ),
           ),
           if (stated != null)
-            Text(
+            AppText.caption(
               formatClipDuration(stated),
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: AppColors.gray500),
+              color: FeColors.ink2,
             ),
           // Deleting a queued note is safe: the queue replays in order, so the
           // removal lands after the add and wins.
@@ -185,37 +184,36 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
                             ? LucideIcons.pause
                             : LucideIcons.play,
                     size: 18,
-                    color: _failed ? AppColors.red600 : AppColors.orange600,
+                    color: _failed ? FeColors.danger : FeColors.primary,
                   ),
                 ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: _failed
-              ? Text(
+              ? AppText.caption(
                   'This recording could not be loaded.',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: AppColors.red600),
+                  color: FeColors.danger,
                 )
               : ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 4,
-                    backgroundColor: AppColors.gray200,
+                    backgroundColor: FeColors.line,
                     valueColor:
-                        const AlwaysStoppedAnimation(AppColors.orange600),
+                        const AlwaysStoppedAnimation(FeColors.primary),
                   ),
                 ),
         ),
         if (total != null && !_failed) ...[
           const SizedBox(width: 8),
-          Text(
+          AppText(
             formatClipDuration(_playing || _position > Duration.zero
                 ? _position
                 : total),
             style: theme.textTheme.labelSmall?.copyWith(
-              color: AppColors.gray500,
+              color: FeColors.ink2,
               fontFamily: 'monospace',
             ),
           ),
@@ -261,7 +259,7 @@ class _DeleteButtonState extends State<_DeleteButton> {
                 tooltip: 'Delete voice note',
                 onPressed: _run,
                 icon: const Icon(LucideIcons.trash2,
-                    size: 14, color: AppColors.gray400),
+                    size: 14, color: FeColors.ink2),
               ),
       );
 }

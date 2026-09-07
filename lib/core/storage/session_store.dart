@@ -14,6 +14,7 @@ class Session {
     this.department,
     this.partnerRole,
     this.vendorId,
+    this.loginAt,
   });
 
   final String userId;
@@ -24,8 +25,21 @@ class Session {
   final String? department;
   final String? partnerRole;
   final String? vendorId;
+  final DateTime? loginAt;
 
   bool get isInHouse => partnerRole == null || partnerRole == 'in-house';
+
+  /// Session is valid for 24 hours from login
+  bool get isExpired {
+    if (loginAt == null) return false;
+    return DateTime.now().difference(loginAt!) >= const Duration(hours: 24);
+  }
+
+  Duration get remainingValidity {
+    if (loginAt == null) return const Duration(hours: 24);
+    final remaining = const Duration(hours: 24) - DateTime.now().difference(loginAt!);
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
 
   factory Session.fromLoginResponse(Map<String, dynamic> technician) => Session(
         userId: technician['id']?.toString() ?? '',
@@ -36,6 +50,7 @@ class Session {
         department: technician['department']?.toString(),
         partnerRole: technician['partnerRole']?.toString(),
         vendorId: technician['vendorId']?.toString(),
+        loginAt: DateTime.now(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -47,6 +62,7 @@ class Session {
         'department': department,
         'partnerRole': partnerRole,
         'vendorId': vendorId,
+        'loginAt': (loginAt ?? DateTime.now()).toIso8601String(),
       };
 
   factory Session.fromJson(Map<String, dynamic> json) => Session(
@@ -58,6 +74,9 @@ class Session {
         department: json['department']?.toString(),
         partnerRole: json['partnerRole']?.toString(),
         vendorId: json['vendorId']?.toString(),
+        loginAt: json['loginAt'] != null
+            ? DateTime.tryParse(json['loginAt'].toString())
+            : null,
       );
 }
 
@@ -100,8 +119,10 @@ class SessionStore {
   SessionStore(this._prefs);
 
   static const _sessionKey = 'session';
+  static const _sessionTimestampKey = 'session_timestamp';
   static const _permissionsKey = 'permissions';
   static const _baseUrlKey = 'apiBaseUrl';
+  static const sessionDuration = Duration(hours: 24);
 
   final SharedPreferences _prefs;
 
@@ -111,15 +132,34 @@ class SessionStore {
   Session? readSession() {
     final raw = _prefs.getString(_sessionKey);
     if (raw == null) return null;
+
+    // Check 24h validity via timestamp
+    final savedTimeMs = _prefs.getInt(_sessionTimestampKey);
+    if (savedTimeMs != null) {
+      final savedTime = DateTime.fromMillisecondsSinceEpoch(savedTimeMs);
+      if (DateTime.now().difference(savedTime) >= sessionDuration) {
+        clear();
+        return null;
+      }
+    }
+
     try {
-      return Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      if (session.isExpired) {
+        clear();
+        return null;
+      }
+      return session;
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> writeSession(Session session) =>
-      _prefs.setString(_sessionKey, jsonEncode(session.toJson()));
+  Future<void> writeSession(Session session) async {
+    final now = session.loginAt ?? DateTime.now();
+    await _prefs.setInt(_sessionTimestampKey, now.millisecondsSinceEpoch);
+    await _prefs.setString(_sessionKey, jsonEncode(session.toJson()));
+  }
 
   Permissions readPermissions() {
     final raw = _prefs.getString(_permissionsKey);
@@ -146,6 +186,7 @@ class SessionStore {
 
   Future<void> clear() async {
     await _prefs.remove(_sessionKey);
+    await _prefs.remove(_sessionTimestampKey);
     await _prefs.remove(_permissionsKey);
   }
 }

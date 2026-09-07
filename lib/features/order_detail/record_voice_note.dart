@@ -6,8 +6,9 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/capture/capture_services.dart';
 import '../../state/checklist_controller.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/voice_note_player.dart';
 
 /// A work order carries one spoken note of its own, separate from the
@@ -40,7 +41,7 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
   void _report(String? message) {
     if (message == null || !mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+        .showSnackBar(SnackBar(content: AppText(message)));
   }
 
   Future<void> _toggleRecording() async {
@@ -94,18 +95,20 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
           child: OutlinedButton.icon(
             onPressed: _saving ? null : _toggleRecording,
             style: OutlinedButton.styleFrom(
-              backgroundColor: _recording ? AppColors.red50 : AppColors.orange50,
+              backgroundColor: _recording
+                  ? FeColors.dangerSoft
+                  : FeColors.primary.withValues(alpha: 0.1),
               foregroundColor:
-                  _recording ? AppColors.red600 : AppColors.orange700,
+                  _recording ? FeColors.danger : FeColors.primary,
               side: BorderSide(
-                color: _recording ? AppColors.red200 : AppColors.orange200,
+                color: _recording ? FeColors.dangerSoft : FeColors.primary,
               ),
             ),
             icon: Icon(
               _recording ? LucideIcons.square : LucideIcons.mic,
               size: 16,
             ),
-            label: Text(
+            label: AppText(
               _saving
                   ? 'Saving…'
                   : _recording
@@ -121,17 +124,17 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.gray50,
+              color: FeColors.page,
               borderRadius: BorderRadius.circular(context.radii.card),
-              border: Border.all(color: AppColors.gray200),
+              border: Border.all(color: FeColors.line),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   'YOUR VOICE NOTE',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: AppColors.gray500,
+                    color: FeColors.ink2,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
                   ),

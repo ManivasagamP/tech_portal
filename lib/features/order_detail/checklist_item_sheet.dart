@@ -9,8 +9,10 @@ import '../../domain/checklist.dart';
 import '../../state/checklist_controller.dart';
 import '../../state/providers.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
+import '../../widgets/common.dart';
 import '../../widgets/photo_viewer.dart';
 import '../../widgets/voice_note_player.dart';
 import 'verification_sheet.dart';
@@ -75,7 +77,7 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
     return showModalBottomSheet<VerificationResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.white,
+      backgroundColor: FeColors.panel,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.9,
       ),
@@ -176,7 +178,6 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
 
     final item = state.items[widget.index];
     final busy = state.busyIndex == widget.index;
-    final theme = Theme.of(context);
 
     return SafeArea(
       top: false,
@@ -189,11 +190,9 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
+                  child: AppText.titleMedium(
                     item.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                    weight: FontWeight.w700,
                   ),
                 ),
                 IconButton(
@@ -215,14 +214,14 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                       backgroundColor: item.isRunning
-                          ? AppColors.red500
-                          : AppColors.orange600,
+                          ? FeColors.danger
+                          : FeColors.primary,
                     ),
                     icon: Icon(
                       item.isRunning ? LucideIcons.pause : LucideIcons.play,
                       size: 16,
                     ),
-                    label: Text(
+                    label: AppText(
                       item.isRunning
                           ? 'Pause'
                           : item.sessions.isEmpty
@@ -241,13 +240,13 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                       backgroundColor: item.isCompleted
-                          ? AppColors.green600
+                          ? FeColors.success
                           : null,
                       foregroundColor: item.isCompleted
-                          ? AppColors.white
-                          : AppColors.gray700,
+                          ? Colors.white
+                          : FeColors.ink2,
                     ),
-                    child: Text(
+                    child: AppText(
                       item.isCompleted ? 'Mark Incomplete' : 'Mark Complete',
                     ),
                   ),
@@ -308,9 +307,9 @@ class _TimeLog extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.orange50,
+        color: FeColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(context.radii.xl),
-        boxShadow: FeElevation.tinted(AppColors.orange600),
+        boxShadow: FeElevation.tinted(FeColors.primary),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,29 +319,27 @@ class _TimeLog extends StatelessWidget {
               const Icon(
                 LucideIcons.clock,
                 size: 16,
-                color: AppColors.orange700,
+                color: FeColors.primary,
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
+                child: AppText.titleSmall(
                   'Time Tracking',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: AppColors.orange900,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  color: FeColors.primary,
+                  weight: FontWeight.w700,
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.orange100,
+                  color: FeColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(context.radii.md),
                 ),
-                child: Text(
+                child: AppText(
                   'Total: ${formatMinutesAsHours(item.timeSpent ?? 0)}',
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontFamily: 'monospace',
-                    color: AppColors.orange700,
+                    color: FeColors.primary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -351,11 +348,9 @@ class _TimeLog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (sessions.isEmpty)
-            Text(
+            AppText.bodySmall(
               'No sessions yet.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.orange700,
-              ),
+              color: FeColors.primary,
             )
           else
             for (var i = 0; i < sessions.length; i++)
@@ -377,15 +372,12 @@ class _SessionRow extends StatelessWidget {
     final theme = Theme.of(context);
     final hasGeo = session.latitude != null && session.longitude != null;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(context.radii.card),
-        boxShadow: FeElevation.sm,
-      ),
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TechCard(
+        padding: const EdgeInsets.all(12),
+        radius: context.radii.card,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -393,14 +385,14 @@ class _SessionRow extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.orange50,
+                  color: FeColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(context.radii.sm),
                 ),
-                child: Text(
+                child: AppText(
                   'SESSION $number',
                   style: theme.textTheme.labelSmall?.copyWith(
                     fontSize: 10,
-                    color: AppColors.orange600,
+                    color: FeColors.primary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -413,7 +405,7 @@ class _SessionRow extends StatelessWidget {
                 const Icon(
                   LucideIcons.logIn,
                   size: 12,
-                  color: AppColors.orange400,
+                  color: FeColors.primary,
                 ),
               if (session.endFaceCaptureUrl != null)
                 const Padding(
@@ -421,32 +413,30 @@ class _SessionRow extends StatelessWidget {
                   child: Icon(
                     LucideIcons.logOut,
                     size: 12,
-                    color: AppColors.orange400,
+                    color: FeColors.primary,
                   ),
                 ),
               const Spacer(),
-              Text(
+              AppText.caption(
                 session.isRunning
                     ? 'Running'
                     : formatMinutesAsHours(session.timeSpent ?? 0),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: session.isRunning
-                      ? AppColors.amber600
-                      : AppColors.gray600,
-                  fontWeight: FontWeight.w700,
-                ),
+                color: session.isRunning
+                    ? FeColors.warning
+                    : FeColors.ink2,
+                weight: FontWeight.w700,
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
+          AppText(
             session.startTime == null
                 ? '—'
                 : '${formatSessionDate(session.startTime!)} '
                       '${formatSessionTime(session.startTime!)}'
                       '${session.endTime == null ? '' : ' → ${formatSessionTime(session.endTime!)}'}',
             style: theme.textTheme.labelSmall?.copyWith(
-              color: AppColors.gray600,
+              color: FeColors.ink2,
               fontFamily: 'monospace',
             ),
           ),
@@ -457,14 +447,14 @@ class _SessionRow extends StatelessWidget {
                 const Icon(
                   LucideIcons.mapPin,
                   size: 11,
-                  color: AppColors.gray400,
+                  color: FeColors.ink2,
                 ),
                 const SizedBox(width: 4),
                 // The place name where one was resolved, the coordinates
                 // otherwise — a technician reading their own history wants
                 // "where was I", and the numbers only answer that on a map.
                 Expanded(
-                  child: Text(
+                  child: AppText(
                     session.placeLabel ??
                         '${session.latitude!.toStringAsFixed(4)}, '
                             '${session.longitude!.toStringAsFixed(4)}',
@@ -472,7 +462,7 @@ class _SessionRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontSize: 10,
-                      color: AppColors.gray500,
+                      color: FeColors.ink2,
                       fontFamily: session.placeLabel == null
                           ? 'monospace'
                           : null,
@@ -483,6 +473,7 @@ class _SessionRow extends StatelessWidget {
             ),
           ],
         ],
+        ),
       ),
     );
   }
@@ -495,7 +486,6 @@ class _Notes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final notes = [
       if (item.legacyComment != null) ChecklistNote(text: item.legacyComment!),
       ...item.comments,
@@ -509,57 +499,50 @@ class _Notes extends StatelessWidget {
             const Icon(
               LucideIcons.messageSquare,
               size: 16,
-              color: AppColors.gray600,
+              color: FeColors.ink2,
             ),
             const SizedBox(width: 8),
-            Text(
+            AppText.titleSmall(
               'Notes',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              weight: FontWeight.w700,
             ),
           ],
         ),
         const SizedBox(height: 8),
         if (notes.isEmpty)
-          Text(
+          AppText.bodySmall(
             'No notes yet.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.gray500,
-            ),
+            color: FeColors.ink2,
           )
         else
           for (final note in notes)
-            Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(context.radii.card),
-                border: Border.all(color: AppColors.gray200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (note.text.isNotEmpty)
-                    Text(note.text, style: theme.textTheme.bodySmall),
-                  if (note.audioUrl != null) ...[
-                    if (note.text.isNotEmpty) const SizedBox(height: 8),
-                    VoiceNotePlayer(
-                      audioUrl: note.audioUrl!,
-                      durationSeconds: note.durationSeconds,
-                    ),
-                  ],
-                  if (note.createdAt != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      formatHistoryTimestamp(note.createdAt!),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: AppColors.gray400,
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TechCard(
+                padding: const EdgeInsets.all(12),
+                radius: context.radii.card,
+                borderColor: FeColors.line,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (note.text.isNotEmpty)
+                      AppText.bodySmall(note.text),
+                    if (note.audioUrl != null) ...[
+                      if (note.text.isNotEmpty) const SizedBox(height: 8),
+                      VoiceNotePlayer(
+                        audioUrl: note.audioUrl!,
+                        durationSeconds: note.durationSeconds,
                       ),
-                    ),
+                    ],
+                    if (note.createdAt != null) ...[
+                      const SizedBox(height: 6),
+                      AppText.caption(
+                        formatHistoryTimestamp(note.createdAt!),
+                        color: FeColors.ink2,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
       ],
@@ -582,8 +565,6 @@ class _Attachments extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -592,15 +573,13 @@ class _Attachments extends StatelessWidget {
             const Icon(
               LucideIcons.paperclip,
               size: 16,
-              color: AppColors.gray600,
+              color: FeColors.ink2,
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
+              child: AppText.titleSmall(
                 'Photos',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                weight: FontWeight.w700,
               ),
             ),
             IconButton(
@@ -617,11 +596,9 @@ class _Attachments extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         if (item.attachments.isEmpty)
-          Text(
+          AppText.bodySmall(
             'No photos attached.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.gray500,
-            ),
+            color: FeColors.ink2,
           )
         else
           Wrap(
@@ -656,21 +633,21 @@ class _AttachmentTile extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.white,
-        title: const Text('Remove this photo?'),
-        content: const Text('It will be taken off this task.'),
+        backgroundColor: FeColors.panel,
+        title: const AppText('Remove this photo?'),
+        content: const AppText('It will be taken off this task.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const AppText('Cancel'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.red600,
-              foregroundColor: AppColors.white,
+              backgroundColor: FeColors.danger,
+              foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove'),
+            child: const AppText('Remove'),
           ),
         ],
       ),
@@ -696,24 +673,24 @@ class _AttachmentTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(context.radii.card),
               child: pending
                   ? Container(
-                      color: AppColors.gray100,
+                      color: FeColors.page,
                       alignment: Alignment.center,
                       child: const Icon(
                         LucideIcons.cloudUpload,
                         size: 20,
-                        color: AppColors.gray500,
+                        color: FeColors.ink2,
                       ),
                     )
                   : Image.network(
                       url,
                       fit: BoxFit.cover,
                       errorBuilder: (context, _, _) => Container(
-                        color: AppColors.gray100,
+                        color: FeColors.page,
                         alignment: Alignment.center,
                         child: const Icon(
                           LucideIcons.image,
                           size: 20,
-                          color: AppColors.gray400,
+                          color: FeColors.ink2,
                         ),
                       ),
                     ),
@@ -727,13 +704,13 @@ class _AttachmentTile extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: const BoxDecoration(
-                  color: AppColors.black,
+                  color: Colors.black,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   LucideIcons.x,
                   size: 12,
-                  color: AppColors.white,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -763,8 +740,8 @@ class _NoteComposer extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
     decoration: const BoxDecoration(
-      color: AppColors.white,
-      border: Border(top: BorderSide(color: AppColors.gray200)),
+      color: FeColors.panel,
+      border: Border(top: BorderSide(color: FeColors.line)),
     ),
     child: Row(
       children: [
@@ -787,12 +764,12 @@ class _NoteComposer extends StatelessWidget {
           onPressed: enabled ? onToggleRecording : null,
           tooltip: recording ? 'Stop recording' : 'Record a voice note',
           style: IconButton.styleFrom(
-            backgroundColor: recording ? AppColors.red50 : null,
+            backgroundColor: recording ? FeColors.dangerSoft : null,
           ),
           icon: Icon(
             recording ? LucideIcons.square : LucideIcons.mic,
             size: 20,
-            color: recording ? AppColors.red600 : AppColors.orange600,
+            color: recording ? FeColors.danger : FeColors.primary,
           ),
         ),
         IconButton(
@@ -814,31 +791,30 @@ class _SheetMessage extends StatelessWidget {
   final VoidCallback onDismiss;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: AppColors.amber50,
-      borderRadius: BorderRadius.circular(context.radii.card),
-      border: Border.all(color: AppColors.amber200),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(LucideIcons.info, size: 16, color: AppColors.amber900),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            message,
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(color: AppColors.amber900),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    child: TechCard(
+      radius: context.radii.card,
+      padding: const EdgeInsets.all(12),
+      tint: FeColors.warningSoft,
+      borderColor: FeColors.warning.withValues(alpha: 0.3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(LucideIcons.info, size: 16, color: FeColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: AppText.bodySmall(
+              message,
+              color: FeColors.warning,
+            ),
           ),
-        ),
-        GestureDetector(
-          onTap: onDismiss,
-          child: const Icon(LucideIcons.x, size: 14, color: AppColors.amber900),
-        ),
-      ],
+          GestureDetector(
+            onTap: onDismiss,
+            child: Icon(LucideIcons.x, size: 14, color: FeColors.warning),
+          ),
+        ],
+      ),
     ),
   );
 }

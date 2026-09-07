@@ -10,8 +10,9 @@ import '../../domain/chat_message.dart';
 import '../../domain/maintenance_record.dart';
 import '../../state/chat_controller.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 
 /// The per-order assistant, opened from the button on the detail screen.
 ///
@@ -127,7 +128,7 @@ class _OrderChatSheetState extends ConsumerState<OrderChatSheet> {
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor:
-                              AlwaysStoppedAnimation(AppColors.gray400),
+                              AlwaysStoppedAnimation(FeColors.ink2),
                         ),
                       ),
                     )
@@ -183,27 +184,27 @@ class _Header extends StatelessWidget {
                 border: Border.all(color: const Color(0x1AFFFFFF)),
               ),
               child: const Icon(LucideIcons.sparkles,
-                  size: 16, color: AppColors.white),
+                  size: 16, color: Colors.white),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  const AppText(
                     'Order Assistant',
                     style: TextStyle(
-                      color: AppColors.white,
+                      color: Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  Text(
+                  AppText(
                     assetName ?? 'This order',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: AppColors.gray400,
+                      color: FeColors.ink2,
                       fontSize: 11,
                     ),
                   ),
@@ -211,7 +212,7 @@ class _Header extends StatelessWidget {
               ),
             ),
             IconButton(
-              icon: const Icon(LucideIcons.x, size: 20, color: AppColors.gray400),
+              icon: const Icon(LucideIcons.x, size: 20, color: FeColors.ink2),
               onPressed: () => Navigator.of(context).pop(),
             ),
           ],
@@ -236,7 +237,7 @@ class _Bubble extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
         decoration: BoxDecoration(
-          color: mine ? AppColors.white : const Color(0xFF2B2D31),
+          color: mine ? FeColors.panel : const Color(0xFF2B2D31),
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(mine ? 16 : 4),
             topRight: Radius.circular(mine ? 4 : 16),
@@ -251,10 +252,10 @@ class _Bubble extends StatelessWidget {
             // lists — which read as literal `**Ticket ID:**` and `####` if
             // printed raw.
             : mine
-                ? Text(
+                ? AppText(
                     message.content,
                     style: const TextStyle(
-                      color: AppColors.black,
+                      color: Colors.black,
                       fontSize: 13,
                       height: 1.5,
                     ),
@@ -271,7 +272,7 @@ class _AssistantMarkdown extends StatelessWidget {
   final String content;
 
   static const _body = TextStyle(
-    color: AppColors.white,
+    color: Colors.white,
     fontSize: 13,
     height: 1.5,
   );
@@ -307,7 +308,7 @@ class _AssistantMarkdown extends StatelessWidget {
           strong: _body.copyWith(fontWeight: FontWeight.w700),
           em: _body.copyWith(fontStyle: FontStyle.italic),
           a: _body.copyWith(
-            color: AppColors.blue400,
+            color: FeColors.info,
             decoration: TextDecoration.underline,
           ),
           listBullet: _body,
@@ -354,13 +355,13 @@ class _Thinking extends StatelessWidget {
             width: 12,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation(AppColors.gray400),
+              valueColor: AlwaysStoppedAnimation(FeColors.ink2),
             ),
           ),
           SizedBox(width: 10),
-          Text(
+          AppText(
             'Thinking…',
-            style: TextStyle(color: AppColors.gray400, fontSize: 12),
+            style: TextStyle(color: FeColors.ink2, fontSize: 12),
           ),
         ],
       );
@@ -399,12 +400,12 @@ class _Composer extends StatelessWidget {
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => onSend(),
                   style: style?.copyWith(
-                    color: AppColors.white,
+                    color: Colors.white,
                     fontSize: 13,
                   ),
                   decoration: const InputDecoration(
                     hintText: 'Ask about this order…',
-                    hintStyle: TextStyle(color: AppColors.gray600),
+                    hintStyle: TextStyle(color: FeColors.ink2),
                     // The theme fills inputs white for the light screens; left
                     // on, this panel's white text would be typed onto white.
                     filled: false,
@@ -424,8 +425,8 @@ class _Composer extends StatelessWidget {
                   child: IconButton.filled(
                     padding: EdgeInsets.zero,
                     style: IconButton.styleFrom(
-                      backgroundColor: AppColors.white,
-                      foregroundColor: AppColors.black,
+                      backgroundColor: FeColors.panel,
+                      foregroundColor: Colors.black,
                       disabledBackgroundColor: const Color(0x66FFFFFF),
                     ),
                     onPressed: sending ? null : onSend,

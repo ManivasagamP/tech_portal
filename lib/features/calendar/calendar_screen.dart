@@ -6,9 +6,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../app/router.dart';
 import '../../core/utils/dates.dart';
 import '../../state/calendar_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
+import '../../widgets/fe_header.dart';
 import '../../widgets/order_card.dart';
 
 /// A month at a glance, with the selected day's jobs underneath.
@@ -19,7 +21,6 @@ class CalendarScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final month = ref.watch(calendarMonthProvider);
     final selected = ref.watch(calendarSelectedDayProvider);
     final records = ref.watch(calendarRecordsProvider);
@@ -29,8 +30,8 @@ class CalendarScreen extends ConsumerWidget {
     final selectedRecords = buckets[formatDayKey(selected)] ?? const [];
 
     return Scaffold(
-      backgroundColor: AppColors.gray50,
-      appBar: AppBar(title: const Text('Calendar')),
+      backgroundColor: FeColors.page,
+      appBar: const FeHeader(title: 'Calendar'),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -46,12 +47,10 @@ class CalendarScreen extends ConsumerWidget {
                       icon: const Icon(LucideIcons.chevronLeft, size: 20),
                     ),
                     Expanded(
-                      child: Text(
+                      child: AppText.titleMedium(
                         formatMonthTitle(month),
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                        align: TextAlign.center,
+                        weight: FontWeight.w700,
                       ),
                     ),
                     IconButton(
@@ -65,12 +64,10 @@ class CalendarScreen extends ConsumerWidget {
                   children: [
                     for (final label in _weekdayLabels)
                       Expanded(
-                        child: Text(
+                        child: AppText.caption(
                           label,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: AppColors.gray500,
-                          ),
+                          align: TextAlign.center,
+                          color: FeColors.ink2,
                         ),
                       ),
                   ],
@@ -104,11 +101,9 @@ class CalendarScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Text(
+          AppText.titleSmall(
             formatFullDay(selected),
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            weight: FontWeight.w700,
           ),
           const SizedBox(height: 12),
           if (selectedRecords.isEmpty)
@@ -162,7 +157,6 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final today = isSameDay(day, DateTime.now());
 
     return InkWell(
@@ -171,25 +165,23 @@ class _DayCell extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: selected ? AppColors.orange600 : Colors.transparent,
+          color: selected ? FeColors.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(context.radii.md),
           border: today && !selected
-              ? Border.all(color: AppColors.orange200)
+              ? Border.all(color: FeColors.primary)
               : null,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
+            AppText.bodySmall(
               '${day.day}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: selected
-                    ? AppColors.white
-                    : inMonth
-                    ? AppColors.gray900
-                    : AppColors.gray300,
-                fontWeight: today || selected ? FontWeight.w700 : null,
-              ),
+              color: selected
+                  ? Colors.white
+                  : inMonth
+                  ? FeColors.ink
+                  : FeColors.line,
+              weight: today || selected ? FontWeight.w700 : null,
             ),
             const SizedBox(height: 2),
             Container(
@@ -197,7 +189,7 @@ class _DayCell extends StatelessWidget {
               width: 4,
               decoration: BoxDecoration(
                 color: hasWork
-                    ? (selected ? AppColors.white : AppColors.orange600)
+                    ? (selected ? Colors.white : FeColors.primary)
                     : Colors.transparent,
                 shape: BoxShape.circle,
               ),

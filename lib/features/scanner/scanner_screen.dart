@@ -12,9 +12,10 @@ import 'package:vibration/vibration.dart';
 import '../../app/env.dart';
 import '../../app/router.dart';
 import '../../core/utils/qr_payload.dart';
-import '../../theme/app_theme.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
+import '../../widgets/fe_header.dart';
 
 /// Reads the QR stickers on assets, work orders and material bins.
 ///
@@ -104,7 +105,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   void _toast(String message) => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(content: AppText(message)),
       );
 
   Future<void> _togglePause() async {
@@ -174,46 +175,35 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final result = _result;
 
     return Scaffold(
-      backgroundColor: AppColors.slate950,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        foregroundColor: FeLightAppBar.foreground,
-        titleTextStyle: FeLightAppBar.title(context),
-        systemOverlayStyle: FeLightAppBar.overlay,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, size: 20),
-          onPressed: () => context.pop(),
-        ),
-        title: Row(
+      backgroundColor: Colors.black,
+      appBar: FeHeader(
+        showBack: true,
+        titleWidget: Row(
           children: [
             Container(
               height: 36,
               width: 36,
-              decoration: const BoxDecoration(
-                color: AppColors.orange50,
+              decoration: BoxDecoration(
+                color: FeColors.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(LucideIcons.qrCode,
-                  size: 18, color: AppColors.orange600),
+              child: Icon(LucideIcons.qrCode, size: 18, color: FeColors.primary),
             ),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
+                AppText.titleSmall(
                   'Scanner',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  weight: FontWeight.w700,
                 ),
-                Text(
+                AppText.caption(
                   _paused ? 'Paused' : 'Looking for a code',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: AppColors.gray500),
+                  color: FeColors.ink2,
                 ),
               ],
             ),
@@ -232,7 +222,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 icon: Icon(
                   on ? LucideIcons.flashlight : LucideIcons.flashlightOff,
                   size: 18,
-                  color: on ? AppColors.amber600 : AppColors.gray600,
+                  color: on ? FeColors.warning : Colors.white.withValues(alpha: 0.7),
                 ),
                 onPressed: _controller.toggleTorch,
               );
@@ -298,13 +288,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 ),
               if (_resultRaw != null) ...[
                 const SizedBox(height: 12),
-                Text(
+                AppText.caption(
                   _resultRaw!,
-                  textAlign: TextAlign.center,
+                  align: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: AppColors.gray500),
+                  color: Colors.white.withValues(alpha: 0.6),
                 ),
               ],
             ],
@@ -331,19 +320,19 @@ class _CameraError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ColoredBox(
-        color: AppColors.slate950,
+        color: Colors.black,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(LucideIcons.cameraOff,
-                  size: 40, color: AppColors.gray400),
+              Icon(LucideIcons.cameraOff,
+                  size: 40, color: Colors.white.withValues(alpha: 0.6)),
               const SizedBox(height: 12),
-              Text(
+              AppText(
                 message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.gray300, fontSize: 13),
+                align: TextAlign.center,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
               ),
             ],
           ),
@@ -400,7 +389,7 @@ class _HitOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        color: AppColors.orange600.withValues(alpha: 0.85),
+        color: FeColors.primary.withValues(alpha: 0.85),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -408,25 +397,25 @@ class _HitOverlay extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
-                color: AppColors.white,
+                color: Colors.white,
                 shape: BoxShape.circle,
               ),
               child: const Icon(LucideIcons.circleCheck,
-                  size: 36, color: AppColors.orange600),
+                  size: 36, color: FeColors.primary),
             ),
             const SizedBox(height: 16),
-            Text(
+            AppText(
               '$label found',
               style: const TextStyle(
-                color: AppColors.white,
+                color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            AppText(
               detail,
-              textAlign: TextAlign.center,
+              align: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Color(0xCCFFFFFF), fontSize: 11),
@@ -458,13 +447,13 @@ class _Controls extends StatelessWidget {
                 onPressed: onTogglePause,
                 style: FilledButton.styleFrom(
                   backgroundColor:
-                      paused ? AppColors.orange600 : AppColors.white,
+                      paused ? FeColors.primary : FeColors.panel,
                   foregroundColor:
-                      paused ? AppColors.white : AppColors.gray900,
+                      paused ? Colors.white : FeColors.ink,
                 ),
                 icon: Icon(paused ? LucideIcons.play : LucideIcons.pause,
                     size: 16),
-                label: Text(paused ? 'Resume' : 'Pause'),
+                label: AppText(paused ? 'Resume' : 'Pause'),
               ),
             ),
           ),
@@ -478,11 +467,11 @@ class _Controls extends StatelessWidget {
                   // The app theme fills outlined buttons white for the light
                   // screens; on this dark one that hides the label entirely.
                   backgroundColor: Colors.transparent,
-                  foregroundColor: AppColors.white,
+                  foregroundColor: Colors.white,
                   side: const BorderSide(color: Color(0x33FFFFFF)),
                 ),
                 icon: const Icon(LucideIcons.image, size: 16),
-                label: const Text('Photo'),
+                label: const AppText('Photo'),
               ),
             ),
           ),
@@ -510,22 +499,22 @@ class _OpenButton extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onOpen,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.orange600,
-                foregroundColor: AppColors.white,
+                backgroundColor: FeColors.primary,
+                foregroundColor: Colors.white,
                 textStyle: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               icon: const Icon(LucideIcons.externalLink, size: 20),
-              label: Text(label),
+              label: AppText(label),
             ),
           ),
           TextButton(
             onPressed: onDismiss,
-            child: const Text(
+            child: AppText(
               'Scan something else',
-              style: TextStyle(color: AppColors.gray400),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             ),
           ),
         ],

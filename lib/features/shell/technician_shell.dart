@@ -7,8 +7,9 @@ import '../../app/router.dart';
 import '../../state/auth_controller.dart';
 import '../../state/providers.dart';
 import '../../state/socket_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/offline_banner.dart';
 import '../../widgets/sync_conflict_panel.dart';
@@ -54,14 +55,14 @@ class _TechnicianShellState extends ConsumerState<TechnicianShell> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Session Expired'),
-        content: const Text(
+        title: const AppText('Session Expired'),
+        content: const AppText(
           'Your session has expired. Please sign in again to continue.',
         ),
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Sign in'),
+            child: const AppText('Sign in'),
           ),
         ],
       ),
@@ -82,10 +83,10 @@ class _TechnicianShellState extends ConsumerState<TechnicianShell> {
     ref.watch(socketConnectionProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.gray50,
+      backgroundColor: FeColors.page,
       body: Column(
         children: [
-          const SafeArea(bottom: false, child: OfflineBanner()),
+          const OfflineBanner(),
           const SyncConflictPanel(),
           Expanded(child: widget.navigationShell),
         ],
@@ -120,7 +121,7 @@ class _BottomNav extends StatelessWidget {
         child: Container(
           height: context.metrics.bottomNavHeight,
           decoration: BoxDecoration(
-            color: AppColors.white,
+            color: FeColors.panel,
             borderRadius: BorderRadius.circular(28),
             boxShadow: FeElevation.floating,
           ),
@@ -166,29 +167,26 @@ class _NavButton extends StatelessWidget {
             AnimatedContainer(
               duration: context.motion.press,
               curve: context.motion.spring,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
               decoration: BoxDecoration(
-                color: active ? AppColors.orange600 : Colors.transparent,
+                color: active ? const Color(0xFFE0F2FE) : Colors.transparent,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: active
-                    ? FeElevation.tinted(AppColors.orange600)
-                    : null,
               ),
               child: Icon(
                 item.icon,
                 size: 20,
-                color: active ? AppColors.white : AppColors.gray400,
+                color: active ? const Color(0xFF0284C7) : FeColors.ink2,
               ),
             ),
             const SizedBox(height: 4),
             AnimatedDefaultTextStyle(
               duration: context.motion.press,
               style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                color: active ? AppColors.orange700 : AppColors.gray400,
+                color: active ? const Color(0xFF0284C7) : FeColors.ink2,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                 letterSpacing: 0.25,
               ),
-              child: Text(item.label),
+              child: AppText(item.label),
             ),
           ],
         ),

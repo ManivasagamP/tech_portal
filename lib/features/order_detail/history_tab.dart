@@ -5,8 +5,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/history_entry.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 
 /// The web renders this as a desktop data table; on a phone it is a timeline.
@@ -54,38 +55,38 @@ class _HistoryRow extends StatelessWidget {
   final HistoryEntry entry;
 
   static (IconData, Color, Color) _styleFor(String action) => switch (action) {
-        'CREATED' => (LucideIcons.fileText, AppColors.blue100, AppColors.blue700),
+        'CREATED' => (LucideIcons.fileText, FeColors.infoSoft, FeColors.info),
         'STATUS_UPDATE' => (
             LucideIcons.circleCheck,
-            AppColors.green100,
-            AppColors.green700
+            FeColors.successSoft,
+            FeColors.success
           ),
         'CHECKLIST_UPDATED' => (
             LucideIcons.circleCheck,
-            AppColors.purple100,
-            AppColors.purple700
+            FeColors.dashboardAccentSoft,
+            FeColors.dashboardAccent
           ),
         'DETAILS_UPDATED' => (
             LucideIcons.pencil,
-            AppColors.orange100,
-            AppColors.orange700
+            FeColors.primary.withValues(alpha: 0.1),
+            FeColors.primary
           ),
         'ASSIGNMENT_UPDATED' => (
             LucideIcons.user,
-            AppColors.indigo100,
-            AppColors.indigo700
+            FeColors.dashboardAccentSoft,
+            FeColors.dashboardAccent
           ),
         'SCHEDULE_UPDATED' => (
             LucideIcons.calendar,
-            AppColors.yellow100,
-            AppColors.yellow700
+            FeColors.warningSoft,
+            FeColors.warning
           ),
         'PRIORITY_UPDATED' => (
             LucideIcons.triangleAlert,
-            AppColors.red100,
-            AppColors.red700
+            FeColors.dangerSoft,
+            FeColors.danger
           ),
-        _ => (LucideIcons.layers, AppColors.slate100, AppColors.slate700),
+        _ => (LucideIcons.layers, FeColors.page, FeColors.ink2),
       };
 
   @override
@@ -110,31 +111,27 @@ class _HistoryRow extends StatelessWidget {
                   children: [
                     Icon(icon, size: 12, color: foreground),
                     const SizedBox(width: 4),
-                    Text(
+                    AppText.caption(
                       entry.actionLabel,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: foreground,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      color: foreground,
+                      weight: FontWeight.w600,
                     ),
                   ],
                 ),
               ),
               const Spacer(),
               if (entry.timestamp != null)
-                Text(
+                AppText.caption(
                   formatHistoryTimestamp(entry.timestamp!),
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: AppColors.gray500),
+                  color: FeColors.ink2,
                 ),
             ],
           ),
           if (entry.description.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
+            AppText.bodySmall(
               entry.description,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.gray700),
+              color: FeColors.ink2,
             ),
           ],
           if (entry.hasValueChange) ...[
@@ -142,11 +139,11 @@ class _HistoryRow extends StatelessWidget {
             Row(
               children: [
                 Flexible(
-                  child: Text(
+                  child: AppText(
                     entry.oldValue?.isNotEmpty == true ? entry.oldValue! : '—',
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: AppColors.gray500,
+                      color: FeColors.ink2,
                       decoration: TextDecoration.lineThrough,
                     ),
                   ),
@@ -154,16 +151,14 @@ class _HistoryRow extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6),
                   child: Icon(LucideIcons.arrowRight,
-                      size: 12, color: AppColors.gray400),
+                      size: 12, color: FeColors.ink2),
                 ),
                 Flexible(
-                  child: Text(
+                  child: AppText.caption(
                     entry.newValue?.isNotEmpty == true ? entry.newValue! : '—',
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: AppColors.gray900,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    color: FeColors.ink,
+                    weight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -172,14 +167,13 @@ class _HistoryRow extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(LucideIcons.user, size: 12, color: AppColors.gray400),
+              const Icon(LucideIcons.user, size: 12, color: FeColors.ink2),
               const SizedBox(width: 4),
-              Text(
+              AppText.caption(
                 entry.performedByRole == null
                     ? entry.userName
                     : '${entry.userName} · ${entry.performedByRole}',
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: AppColors.gray500),
+                color: FeColors.ink2,
               ),
             ],
           ),

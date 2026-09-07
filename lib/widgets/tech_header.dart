@@ -5,10 +5,13 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../app/router.dart';
 import '../state/providers.dart';
-import '../theme/app_colors.dart';
+import '../theme/fe_colors.dart';
 import '../theme/theme_extensions.dart';
+import 'app_text.dart';
+import 'fe_header.dart';
 
-/// The portal's one header: dark chrome bar, title left, actions right.
+/// The shell-level header: [FeHeader] plus the calendar/notification-bell/
+/// logout affordances every top-level screen shares.
 class TechHeader extends ConsumerWidget implements PreferredSizeWidget {
   const TechHeader({
     super.key,
@@ -36,52 +39,31 @@ class TechHeader extends ConsumerWidget implements PreferredSizeWidget {
     final unseen =
         ref.watch(unseenNotificationCountProvider).valueOrNull ?? 0;
 
-    return Container(
-      height: preferredSize.height,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
-        color: AppColors.ink,
-        border: Border(bottom: BorderSide(color: AppColors.inkBorder)),
-      ),
-      child: Row(
-        children: [
-          if (showBack)
-            _HeaderButton(
-              icon: LucideIcons.arrowLeft,
-              tooltip: 'Back',
-              onTap: () => context.pop(),
-            ),
-          Expanded(
-            child: Text(
-              title,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.white,
-                  ),
-            ),
+    return FeHeader(
+      title: title,
+      showBack: showBack,
+      actions: [
+        if (showCalendar && location != Routes.calendar)
+          _HeaderButton(
+            icon: LucideIcons.calendarDays,
+            tooltip: 'Calendar',
+            onTap: () => context.push(Routes.calendar),
           ),
-          if (showCalendar && location != Routes.calendar)
-            _HeaderButton(
-              icon: LucideIcons.calendarDays,
-              tooltip: 'Calendar',
-              onTap: () => context.push(Routes.calendar),
-            ),
-          if (showNotifications)
-            _HeaderButton(
-              icon: LucideIcons.bell,
-              tooltip: 'Notifications',
-              badge: unseen,
-              onTap: () => context.push(Routes.notifications),
-            ),
-          if (onLogout != null)
-            _HeaderButton(
-              icon: LucideIcons.logOut,
-              tooltip: 'Log Out',
-              onTap: onLogout!,
-            ),
-        ],
-      ),
+        if (showNotifications)
+          _HeaderButton(
+            icon: LucideIcons.bell,
+            tooltip: 'Notifications',
+            badge: unseen,
+            onTap: () => context.push(Routes.notifications),
+          ),
+        if (onLogout != null)
+          _HeaderButton(
+            icon: LucideIcons.logOut,
+            tooltip: 'Log Out',
+            onTap: onLogout!,
+          ),
+        const SizedBox(width: 4),
+      ],
     );
   }
 }
@@ -107,7 +89,7 @@ class _HeaderButton extends StatelessWidget {
       onPressed: onTap,
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
-      icon: Icon(icon, size: 20, color: AppColors.white),
+      icon: Icon(icon, size: 20),
     );
 
     if (badge <= 0) return button;
@@ -123,17 +105,17 @@ class _HeaderButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             constraints: const BoxConstraints(minWidth: 16),
             decoration: BoxDecoration(
-              color: AppColors.red600,
+              color: FeColors.danger,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: AppColors.ink),
+              border: Border.all(color: FeColors.panel),
             ),
-            child: Text(
+            child: AppText(
               badge > 9 ? '9+' : '$badge',
-              textAlign: TextAlign.center,
+              align: TextAlign.center,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     fontSize: 9,
                     height: 1.2,
-                    color: AppColors.white,
+                    color: Colors.white,
                     fontWeight: FontWeight.w700,
                   ),
             ),
@@ -149,7 +131,7 @@ Future<bool> showLogoutDialog(BuildContext context) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      backgroundColor: AppColors.white,
+      backgroundColor: FeColors.panel,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(context.radii.sheet),
       ),
@@ -159,33 +141,32 @@ Future<bool> showLogoutDialog(BuildContext context) async {
             height: 40,
             width: 40,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: AppColors.red50,
+            decoration: BoxDecoration(
+              color: FeColors.dangerSoft,
               shape: BoxShape.circle,
             ),
-            child: const Icon(LucideIcons.logOut,
-                size: 20, color: AppColors.red600),
+            child: Icon(LucideIcons.logOut, size: 20, color: FeColors.danger),
           ),
           const SizedBox(width: 12),
-          const Text('Sign Out'),
+          const AppText('Sign Out'),
         ],
       ),
-      content: const Text(
+      content: const AppText(
         'Are you sure you want to log out of the technician portal? '
         'You will need to sign in again to access your tasks.',
       ),
       actions: [
         OutlinedButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          child: const AppText('Cancel'),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.red600,
-            foregroundColor: AppColors.white,
+            backgroundColor: FeColors.danger,
+            foregroundColor: Colors.white,
           ),
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Log Out'),
+          child: const AppText('Log Out'),
         ),
       ],
     ),

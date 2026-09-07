@@ -4,13 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../app/router.dart';
-import '../../domain/maintenance_record.dart';
 import '../../state/orders_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 import '../../widgets/order_card.dart';
-import '../../widgets/tech_header.dart';
 import 'filter_sheet.dart';
 
 class OrdersScreen extends ConsumerStatefulWidget {
@@ -22,6 +21,7 @@ class OrdersScreen extends ConsumerStatefulWidget {
 
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   final _searchController = TextEditingController();
+  bool _showSearchBar = false;
 
   @override
   void dispose() {
@@ -33,7 +33,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     final result = await showModalBottomSheet<OrderFilters>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.white,
+      backgroundColor: FeColors.panel,
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.9,
       ),
@@ -63,9 +63,6 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     final controller = ref.read(ordersControllerProvider.notifier);
     final visible = state.visibleRecords;
 
-    // Filters reset on a type switch, so the search box has to follow. This
-    // has to run outside build — clearing the controller there would mark the
-    // TextField dirty mid-build.
     ref.listen(ordersControllerProvider.select((s) => s.searchQuery), (
       _,
       query,
@@ -76,119 +73,256 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     });
 
     return Scaffold(
-      backgroundColor: AppColors.gray50,
-      appBar: const TechHeader(title: 'Orders', showNotifications: false),
-      body: RefreshIndicator(
-        onRefresh: controller.refresh,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TechCard(
-              child: Column(
+      backgroundColor: FeColors.page,
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          onRefresh: controller.refresh,
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            children: [
+              // Top Bar with Orders title, subtitle, Calendar, and Search circular action buttons
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Maintenance Type',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: AppColors.gray700,
-                      fontWeight: FontWeight.w500,
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Orders',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: FeColors.ink,
+                            letterSpacing: -0.5,
+                            height: 1.1,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'All your work orders in one place',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: FeColors.ink2,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<OrderType?>(
-                    initialValue: state.selectedType,
-                    isExpanded: true,
-                    items: [
-                      const DropdownMenuItem<OrderType?>(
-                        value: null,
-                        child: Text('All Tasks'),
-                      ),
-                      for (final type in kBrowsableOrderTypes)
-                        DropdownMenuItem<OrderType?>(
-                          value: type,
-                          child: Text(type.label),
-                        ),
-                    ],
-                    onChanged: controller.selectType,
+                  const SizedBox(width: 8),
+                  _CircleActionButton(
+                    icon: LucideIcons.calendarDays,
+                    tooltip: 'Calendar',
+                    onTap: () => context.push(Routes.calendar),
+                  ),
+                  const SizedBox(width: 8),
+                  _CircleActionButton(
+                    icon: _showSearchBar ? LucideIcons.x : LucideIcons.search,
+                    tooltip: 'Search',
+                    onTap: () {
+                      setState(() {
+                        _showSearchBar = !_showSearchBar;
+                        if (!_showSearchBar) {
+                          _searchController.clear();
+                          controller.setSearchQuery('');
+                        }
+                      });
+                    },
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: controller.setSearchQuery,
-                    decoration: InputDecoration(
-                      hintText: 'Search orders...',
-                      prefixIcon: const Icon(LucideIcons.search, size: 16),
-                      suffixIcon: state.searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(LucideIcons.x, size: 16),
-                              onPressed: () {
-                                _searchController.clear();
-                                controller.setSearchQuery('');
-                              },
-                            ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () => _openFilters(state),
-                  icon: const Icon(LucideIcons.slidersHorizontal, size: 16),
-                  label: const Text('Filters'),
-                ),
-              ],
-            ),
-            if (state.hasAnyFilter) ...[
               const SizedBox(height: 16),
-              _ActiveFilters(state: state, onClearAll: _clearAll),
-            ],
-            const SizedBox(height: 16),
-            if (state.loading && state.records.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 48),
-                child: TechSpinner(),
-              )
-            else if (state.error != null && state.records.isEmpty)
-              TechEmptyState(
-                icon: LucideIcons.triangleAlert,
-                title: 'Failed to load orders',
-                subtitle: state.error,
-              )
-            else if (visible.isEmpty)
-              const TechEmptyState(
-                icon: LucideIcons.clipboardList,
-                title: 'No orders found',
-                subtitle: 'Try adjusting your filters',
-              )
-            else
-              for (final record in visible)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: OrderCard(
-                    id: record.id,
-                    type: record.type,
-                    referenceId: record.referenceId ?? '',
-                    title: record.cardTitle,
-                    description: record.cardDescription,
-                    priority: record.displayPriority,
-                    status: record.displayStatus,
-                    dueDate: record.effectiveDate,
-                    technician: record.technicianName,
-                    onTap: () => context.push(
-                      Routes.orderDetail(
-                        (state.selectedType ?? record.type).slug,
-                        record.id,
+
+              // Expandable Search & Filter Bar
+              if (_showSearchBar) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: FeColors.panel,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.02),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          onChanged: controller.setSearchQuery,
+                          decoration: InputDecoration(
+                            hintText: 'Search orders...',
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 14,
+                            ),
+                            prefixIcon: const Icon(
+                              LucideIcons.search,
+                              size: 18,
+                              color: Color(0xFF64748B),
+                            ),
+                            suffixIcon: state.searchQuery.isEmpty
+                                ? null
+                                : IconButton(
+                                    icon: const Icon(LucideIcons.x, size: 16),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      controller.setSearchQuery('');
+                                    },
+                                  ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Material(
+                      color: FeColors.panel,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _openFilters(state),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.02),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                LucideIcons.slidersHorizontal,
+                                size: 17,
+                                color: Color(0xFF475569),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Filters',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF475569),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              if (state.hasAnyFilter) ...[
+                _ActiveFilters(state: state, onClearAll: _clearAll),
+                const SizedBox(height: 14),
+              ],
+
+              if (state.loading && state.records.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: TechSpinner(),
+                )
+              else if (state.error != null && state.records.isEmpty)
+                TechEmptyState(
+                  icon: LucideIcons.triangleAlert,
+                  title: 'Failed to load orders',
+                  subtitle: state.error,
+                )
+              else if (visible.isEmpty)
+                const TechEmptyState(
+                  icon: LucideIcons.clipboardList,
+                  title: 'No orders found',
+                  subtitle: 'Try adjusting your filters',
+                )
+              else
+                for (final record in visible)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: OrderCard(
+                      id: record.id,
+                      type: record.type,
+                      referenceId: record.referenceId ?? '',
+                      title: record.cardTitle,
+                      description: record.cardDescription,
+                      priority: record.displayPriority,
+                      status: record.displayStatus,
+                      dueDate: record.effectiveDate,
+                      technician: record.technicianName,
+                      onTap: () => context.push(
+                        Routes.orderDetail(
+                          (state.selectedType ?? record.type).slug,
+                          record.id,
+                        ),
                       ),
                     ),
                   ),
-                ),
-          ],
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CircleActionButton extends StatelessWidget {
+  const _CircleActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: FeColors.panel,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 19, color: FeColors.ink),
         ),
       ),
     );
@@ -209,45 +343,42 @@ class _ActiveFilters extends StatelessWidget {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(
+        AppText.bodySmall(
           'Active filters:',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: AppColors.gray600),
+          color: FeColors.ink2,
         ),
         if (filters.priority != null)
           _FilterPill(
             label: 'Priority: ${filters.priority}',
-            background: AppColors.orange100,
-            foreground: AppColors.orange700,
+            background: FeColors.primary.withValues(alpha: 0.1),
+            foreground: FeColors.primary,
           ),
         if (filters.status != null)
           _FilterPill(
             label: 'Status: ${filters.status}',
-            background: AppColors.green100,
-            foreground: AppColors.green700,
+            background: FeColors.successSoft,
+            foreground: FeColors.success,
           ),
         if (filters.dateFilter != DateFilter.all)
           _FilterPill(
             label: filters.dateFilter == DateFilter.overdue
                 ? 'Overdue'
                 : 'Due Today',
-            background: AppColors.purple100,
-            foreground: AppColors.purple700,
+            background: FeColors.dashboardAccentSoft,
+            foreground: FeColors.dashboardAccent,
           ),
         if (state.searchQuery.isNotEmpty)
           _FilterPill(
             label: 'Search: ${state.searchQuery}',
-            background: AppColors.gray100,
-            foreground: AppColors.gray700,
+            background: FeColors.page,
+            foreground: FeColors.ink2,
           ),
         GestureDetector(
           onTap: onClearAll,
-          child: Text(
+          child: AppText.bodySmall(
             'Clear all',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppColors.red600,
-              fontWeight: FontWeight.w500,
-            ),
+            color: FeColors.danger,
+            weight: FontWeight.w500,
           ),
         ),
       ],
@@ -273,9 +404,9 @@ class _FilterPill extends StatelessWidget {
       color: background,
       borderRadius: BorderRadius.circular(999),
     ),
-    child: Text(
+    child: AppText.bodySmall(
       label,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: foreground),
+      color: foreground,
     ),
   );
 }

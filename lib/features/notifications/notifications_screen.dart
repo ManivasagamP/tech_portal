@@ -8,9 +8,11 @@ import '../../core/utils/dates.dart';
 import '../../core/utils/notification_route.dart';
 import '../../domain/app_notification.dart';
 import '../../state/notifications_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
+import '../../widgets/fe_header.dart';
 import '../../widgets/motion.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -56,9 +58,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final anyUnread = notifications.any((n) => !n.isRead);
 
     return Scaffold(
-      backgroundColor: AppColors.gray50,
-      appBar: AppBar(
-        title: const Text('Notifications'),
+      backgroundColor: FeColors.page,
+      appBar: FeHeader(
+        title: 'Notifications',
         actions: [
           if (anyUnread)
             TextButton.icon(
@@ -66,7 +68,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   .read(notificationsControllerProvider.notifier)
                   .markAllRead,
               icon: const Icon(LucideIcons.checkCheck, size: 16),
-              label: const Text('Mark all read'),
+              label: const AppText('Mark all read'),
             ),
         ],
       ),
@@ -127,34 +129,33 @@ class _NotificationTile extends StatelessWidget {
   ({Color background, Color border, Color accent, IconData icon}) get _tone =>
       switch (notification.type) {
         'warning' => (
-          background: AppColors.orange50,
-          border: AppColors.orange200,
-          accent: AppColors.orange600,
+          background: FeColors.warningSoft,
+          border: FeColors.warningSoft,
+          accent: FeColors.warning,
           icon: LucideIcons.circleAlert,
         ),
         'success' => (
-          background: AppColors.green50,
-          border: AppColors.green200,
-          accent: AppColors.green600,
+          background: FeColors.successSoft,
+          border: FeColors.successSoft,
+          accent: FeColors.success,
           icon: LucideIcons.circleCheck,
         ),
         'error' => (
-          background: AppColors.red50,
-          border: AppColors.red200,
-          accent: AppColors.red600,
+          background: FeColors.dangerSoft,
+          border: FeColors.dangerSoft,
+          accent: FeColors.danger,
           icon: LucideIcons.circleAlert,
         ),
         _ => (
-          background: AppColors.blue50,
-          border: AppColors.blue200,
-          accent: AppColors.blue600,
+          background: FeColors.infoSoft,
+          border: FeColors.infoSoft,
+          accent: FeColors.info,
           icon: LucideIcons.info,
         ),
       };
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final tone = _tone;
     final read = notification.isRead;
 
@@ -170,7 +171,7 @@ class _NotificationTile extends StatelessWidget {
               // A read notification drops back to plain white; unread keeps
               // a soft tint of the type colour, so the list can be triaged
               // at a glance without a hard outline doing the work.
-              color: read ? AppColors.white : tone.background,
+              color: read ? FeColors.panel : tone.background,
               borderRadius: BorderRadius.circular(context.radii.xl),
               boxShadow: read
                   ? FeElevation.soft
@@ -197,13 +198,9 @@ class _NotificationTile extends StatelessWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: Text(
+                            child: AppText.titleSmall(
                               notification.title,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: read
-                                    ? FontWeight.w500
-                                    : FontWeight.w700,
-                              ),
+                              weight: read ? FontWeight.w500 : FontWeight.w700,
                             ),
                           ),
                           if (!read)
@@ -219,11 +216,9 @@ class _NotificationTile extends StatelessWidget {
                       ),
                       if (notification.message.isNotEmpty) ...[
                         const SizedBox(height: 4),
-                        Text(
+                        AppText.bodySmall(
                           notification.message,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: AppColors.gray600,
-                          ),
+                          color: FeColors.ink2,
                         ),
                       ],
                       if (notification.createdAt != null) ...[
@@ -233,14 +228,12 @@ class _NotificationTile extends StatelessWidget {
                             const Icon(
                               LucideIcons.clock,
                               size: 12,
-                              color: AppColors.gray400,
+                              color: FeColors.ink2,
                             ),
                             const SizedBox(width: 6),
-                            Text(
+                            AppText.caption(
                               formatDateTimeShort(notification.createdAt!),
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: AppColors.gray500,
-                              ),
+                              color: FeColors.ink2,
                             ),
                           ],
                         ),

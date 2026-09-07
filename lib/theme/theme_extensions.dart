@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../domain/maintenance_record.dart' show OrderType;
-import 'app_colors.dart';
+import 'fe_colors.dart';
+import 'fe_status_tokens.dart';
 
 @immutable
 class FeChipStyle {
@@ -16,113 +17,57 @@ class FeChipStyle {
   final Color border;
 }
 
-/// Chip palettes lifted verbatim from `components/technician/OrderCard.tsx` and the
-/// order-detail pages. The web app deliberately runs two different priority palettes
-/// (cards paint Medium blue, detail pages paint it yellow); both are kept.
+/// Status/priority chip palettes, built from the single semantic hue per
+/// state in [FeStatusHues] — sourced from the web technician portal's real
+/// design tokens instead of an app-local Tailwind guess. Each pill is a soft
+/// tint of its hue (background), the hue itself (foreground text/icon), and
+/// a slightly stronger tint (border) — the existing pastel-chip look, just
+/// with one true color per state instead of the old duplicated palette.
+///
+/// Previously this app ran two different priority palettes depending on
+/// context (card view painted Medium blue, detail view painted it yellow) —
+/// an inconsistency the web app's own source carried too. The web's real
+/// token layer defines exactly one `--priority-medium`, so there is now one
+/// [priority] lookup used identically everywhere.
 @immutable
 class FeStatusColors extends ThemeExtension<FeStatusColors> {
   const FeStatusColors();
 
-  static const _completed = FeChipStyle(
-    background: AppColors.green100,
-    foreground: AppColors.green700,
-    border: AppColors.green200,
-  );
-  static const _inProgress = FeChipStyle(
-    background: AppColors.blue100,
-    foreground: AppColors.blue700,
-    border: AppColors.blue200,
-  );
-  static const _onHold = FeChipStyle(
-    background: AppColors.yellow100,
-    foreground: AppColors.yellow700,
-    border: AppColors.yellow200,
-  );
-  static const _cancelled = FeChipStyle(
-    background: AppColors.gray100,
-    foreground: AppColors.gray700,
-    border: AppColors.gray200,
-  );
-  static const _statusFallback = FeChipStyle(
-    background: AppColors.slate100,
-    foreground: AppColors.slate700,
-    border: AppColors.slate200,
+  static FeChipStyle _fromHue(Color hue) => FeChipStyle(
+    background: Color.alphaBlend(hue.withValues(alpha: 0.12), Colors.white),
+    foreground: hue,
+    border: hue.withValues(alpha: 0.28),
   );
 
-  /// Substring matching, same order as the web switch — "pending" lands on the
-  /// on-hold palette, which is intentional there.
+  /// Substring matching, same order as the web switch — "pending" lands on
+  /// the on-hold palette, which is intentional there.
   FeChipStyle status(String? value) {
     final v = (value ?? '').toLowerCase();
-    if (v.contains('completed') || v.contains('closed')) return _completed;
-    if (v.contains('progress')) return _inProgress;
-    if (v.contains('hold') || v.contains('pending')) return _onHold;
-    if (v.contains('cancel')) return _cancelled;
-    return _statusFallback;
-  }
-
-  /// OrderCard palette — Medium is blue here.
-  FeChipStyle priorityOnCard(String? value) {
-    switch ((value ?? '').toLowerCase()) {
-      case 'critical':
-        return const FeChipStyle(
-          background: AppColors.red50,
-          foreground: AppColors.red600,
-          border: AppColors.red100,
-        );
-      case 'high':
-        return const FeChipStyle(
-          background: AppColors.orange50,
-          foreground: AppColors.orange600,
-          border: AppColors.orange100,
-        );
-      case 'medium':
-        return const FeChipStyle(
-          background: AppColors.blue50,
-          foreground: AppColors.blue600,
-          border: AppColors.blue100,
-        );
-      case 'low':
-        return const FeChipStyle(
-          background: AppColors.green50,
-          foreground: AppColors.green600,
-          border: AppColors.green100,
-        );
-      default:
-        return const FeChipStyle(
-          background: AppColors.gray50,
-          foreground: AppColors.gray600,
-          border: AppColors.gray100,
-        );
+    if (v.contains('completed') || v.contains('closed')) {
+      return _fromHue(FeStatusHues.completed);
     }
+    if (v.contains('progress')) return _fromHue(FeStatusHues.inProgress);
+    if (v.contains('hold') || v.contains('pending')) {
+      return _fromHue(FeStatusHues.onHold);
+    }
+    if (v.contains('cancel')) return _fromHue(FeStatusHues.cancelled);
+    return _fromHue(FeStatusHues.draft);
   }
 
-  /// Order-detail pill palette — Medium is yellow here.
-  FeChipStyle priorityOnDetail(String? value) {
+  /// One priority palette, used by both the order-card pill and the
+  /// order-detail pill.
+  FeChipStyle priority(String? value) {
     switch ((value ?? '').toLowerCase()) {
       case 'critical':
-        return const FeChipStyle(
-          background: AppColors.red100,
-          foreground: AppColors.red700,
-          border: AppColors.red100,
-        );
+        return _fromHue(FeStatusHues.priorityCritical);
       case 'high':
-        return const FeChipStyle(
-          background: AppColors.orange100,
-          foreground: AppColors.orange700,
-          border: AppColors.orange100,
-        );
+        return _fromHue(FeStatusHues.priorityHigh);
       case 'medium':
-        return const FeChipStyle(
-          background: AppColors.yellow100,
-          foreground: AppColors.yellow700,
-          border: AppColors.yellow100,
-        );
+        return _fromHue(FeStatusHues.priorityMedium);
+      case 'low':
+        return _fromHue(FeStatusHues.priorityLow);
       default:
-        return const FeChipStyle(
-          background: AppColors.green100,
-          foreground: AppColors.green700,
-          border: AppColors.green100,
-        );
+        return _fromHue(FeStatusHues.cancelled);
     }
   }
 
@@ -365,10 +310,10 @@ class FeMotion extends ThemeExtension<FeMotion> {
 class FeOrderTypeColors extends ThemeExtension<FeOrderTypeColors> {
   const FeOrderTypeColors();
 
-  final Color workOrder = AppColors.blue600;
-  final Color preventive = AppColors.emerald600;
-  final Color reactive = AppColors.red600;
-  final Color annual = AppColors.amber600;
+  final Color workOrder = FeColors.info;
+  final Color preventive = FeColors.success;
+  final Color reactive = FeColors.danger;
+  final Color annual = FeColors.warning;
 
   /// Looks the four fields up by [OrderType] instead of the caller switching
   /// on it themselves everywhere a leading icon badge needs a colour.
@@ -411,31 +356,31 @@ class FeAccents extends ThemeExtension<FeAccents> {
 
   final FeBadgeStyle orange = const FeBadgeStyle(
     background: Color(0x1FF97316),
-    foreground: AppColors.orange600,
+    foreground: Color(0xFFEA580C), // orange-600
   );
   final FeBadgeStyle emerald = const FeBadgeStyle(
     background: Color(0x1F10B981),
-    foreground: AppColors.emerald600,
+    foreground: FeColors.success,
   );
   final FeBadgeStyle blue = const FeBadgeStyle(
     background: Color(0x1F3B82F6),
-    foreground: AppColors.blue600,
+    foreground: FeColors.info,
   );
   final FeBadgeStyle purple = const FeBadgeStyle(
     background: Color(0x1FA855F7),
-    foreground: AppColors.purple600,
+    foreground: Color(0xFF9333EA), // purple-600
   );
   final FeBadgeStyle rose = const FeBadgeStyle(
     background: Color(0x1FE11D48),
-    foreground: AppColors.rose600,
+    foreground: Color(0xFFE11D48), // rose-600
   );
   final FeBadgeStyle amber = const FeBadgeStyle(
     background: Color(0x1FD97706),
-    foreground: AppColors.amber600,
+    foreground: FeColors.warning,
   );
   final FeBadgeStyle slate = const FeBadgeStyle(
     background: Color(0x1F334155),
-    foreground: AppColors.slate700,
+    foreground: Color(0xFF334155), // slate-700
   );
 
   @override

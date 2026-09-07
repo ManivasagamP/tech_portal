@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../state/orders_controller.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
+import '../../widgets/app_text.dart';
 
 const _priorityOptions = ['Critical', 'High', 'Medium', 'Low'];
 
@@ -28,8 +29,6 @@ class _FilterSheetState extends State<FilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return SafeArea(
       top: false,
       child: Column(
@@ -38,15 +37,14 @@ class _FilterSheetState extends State<FilterSheet> {
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
             decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.gray200)),
+              border: Border(bottom: BorderSide(color: FeColors.line)),
             ),
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: AppText.titleMedium(
                     'Filters',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    weight: FontWeight.w600,
                   ),
                 ),
                 IconButton(
@@ -116,7 +114,7 @@ class _FilterSheetState extends State<FilterSheet> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.gray200)),
+              border: Border(top: BorderSide(color: FeColors.line)),
             ),
             child: Row(
               children: [
@@ -124,14 +122,14 @@ class _FilterSheetState extends State<FilterSheet> {
                   child: OutlinedButton(
                     onPressed: () =>
                         Navigator.of(context).pop(const OrderFilters()),
-                    child: const Text('Reset'),
+                    child: const AppText('Reset'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(_local),
-                    child: const Text('Apply Filters'),
+                    child: const AppText('Apply Filters'),
                   ),
                 ),
               ],
@@ -151,10 +149,10 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: Text(
+        child: AppText(
           text.toUpperCase(),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: AppColors.gray400,
+                color: FeColors.ink2,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1,
               ),
@@ -179,9 +177,9 @@ class _SegmentedRow extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: AppColors.gray50,
+          color: FeColors.page,
           borderRadius: BorderRadius.circular(context.radii.card),
-          border: Border.all(color: AppColors.gray100),
+          border: Border.all(color: FeColors.line),
         ),
         child: Row(
           children: [
@@ -196,20 +194,20 @@ class _SegmentedRow extends StatelessWidget {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: i == selectedIndex
-                          ? AppColors.orange600
+                          ? FeColors.primary
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(context.radii.lg),
                       boxShadow: i == selectedIndex ? FeElevation.sm : null,
                     ),
-                    child: Text(
+                    child: AppText(
                       options[i],
-                      textAlign: TextAlign.center,
+                      align: TextAlign.center,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                             fontSize: fontSize,
                             fontWeight: FontWeight.w700,
                             color: i == selectedIndex
-                                ? AppColors.white
-                                : AppColors.gray500,
+                                ? Colors.white
+                                : FeColors.ink2,
                           ),
                     ),
                   ),
@@ -250,25 +248,25 @@ class _ToggleGrid extends StatelessWidget {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: option == selected
-                        ? AppColors.orange50
-                        : AppColors.white,
+                        ? FeColors.primary.withValues(alpha: 0.08)
+                        : FeColors.panel,
                     borderRadius: BorderRadius.circular(context.radii.card),
                     border: Border.all(
                       width: 2,
                       color: option == selected
-                          ? AppColors.orange600
-                          : AppColors.gray100,
+                          ? FeColors.primary
+                          : FeColors.line,
                     ),
                   ),
-                  child: Text(
+                  child: AppText(
                     option,
-                    textAlign: TextAlign.center,
+                    align: TextAlign.center,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontSize: fontSize,
                           fontWeight: FontWeight.w700,
                           color: option == selected
-                              ? AppColors.orange700
-                              : AppColors.gray500,
+                              ? FeColors.primary
+                              : FeColors.ink2,
                         ),
                   ),
                 ),
