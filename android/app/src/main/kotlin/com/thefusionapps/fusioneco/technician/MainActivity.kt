@@ -1,4 +1,4 @@
-package com.example.flutter_application_1
+package com.thefusionapps.fusioneco.technician
 
 import io.flutter.embedding.android.FlutterActivity
 

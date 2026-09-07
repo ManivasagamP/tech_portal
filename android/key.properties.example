@@ -1,0 +1,10 @@
+# Copy to android/key.properties and fill in. Never commit the real file or the
+# .jks it points at — anyone holding both can ship an update as this app.
+#
+# Create the keystore once:
+#   keytool -genkey -v -keystore fusion-eco-technician.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias technician
+storeFile=../fusion-eco-technician.jks
+storePassword=
+keyAlias=technician
+keyPassword=
