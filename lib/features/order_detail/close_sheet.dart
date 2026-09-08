@@ -191,9 +191,8 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
             .read(orderDetailControllerProvider(widget.orderKey).notifier)
             .refresh();
         if (!mounted) return;
-        Navigator.of(
-          context,
-        ).pop('This job was already closed, most likely by an earlier sync.');
+        Navigator.of(context)
+            .pop('This job was already closed by someone else.');
       case CloseRejected(
         :final needsRootCause,
         :final needsChecklist,

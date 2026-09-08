@@ -35,8 +35,10 @@ class HttpFailure extends ApiFailure {
   /// client treats that as success because an offline replay is not a failure.
   bool get isAlreadyCompleted =>
       status == 400 &&
-      RegExp(r'already (completed|been started or completed)', caseSensitive: false)
-          .hasMatch(message);
+      RegExp(
+        r'already (completed|been started or completed)',
+        caseSensitive: false,
+      ).hasMatch(message);
 }
 
 class UnknownFailure extends ApiFailure {
@@ -49,7 +51,7 @@ ApiFailure mapDioException(DioException e) {
     return NetworkFailure(e.message ?? 'No connection');
   }
   final data = response.data;
-  var message = 'Request failed (${response.statusCode})';
+  var message = 'Something went wrong. Please try again.';
   var missing = <String>[];
 
   if (data is Map) {

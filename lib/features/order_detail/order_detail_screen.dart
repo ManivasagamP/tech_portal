@@ -125,12 +125,12 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
         ),
         body: detail.when(
           loading: () => const Center(child: TechSpinner()),
-          error: (error, _) => Padding(
-            padding: const EdgeInsets.all(16),
+          error: (error, _) => const Padding(
+            padding: EdgeInsets.all(16),
             child: TechEmptyState(
               icon: LucideIcons.circleAlert,
-              title: 'Order not found',
-              subtitle: '$error',
+              title: "Couldn't load this job",
+              subtitle: 'Please check your connection and try again.',
             ),
           ),
           data: (data) => TabBarView(

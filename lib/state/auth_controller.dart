@@ -32,14 +32,13 @@ class AuthState {
     bool? sessionExpired,
     bool clearSession = false,
     bool clearError = false,
-  }) =>
-      AuthState(
-        session: clearSession ? null : (session ?? this.session),
-        permissions: permissions ?? this.permissions,
-        isBusy: isBusy ?? this.isBusy,
-        error: clearError ? null : (error ?? this.error),
-        sessionExpired: sessionExpired ?? this.sessionExpired,
-      );
+  }) => AuthState(
+    session: clearSession ? null : (session ?? this.session),
+    permissions: permissions ?? this.permissions,
+    isBusy: isBusy ?? this.isBusy,
+    error: clearError ? null : (error ?? this.error),
+    sessionExpired: sessionExpired ?? this.sessionExpired,
+  );
 }
 
 class AuthController extends Notifier<AuthState> {
@@ -65,10 +64,7 @@ class AuthController extends Notifier<AuthState> {
       ref.read(pushServiceProvider).init();
     }
 
-    return AuthState(
-      session: session,
-      permissions: store.readPermissions(),
-    );
+    return AuthState(session: session, permissions: store.readPermissions());
   }
 
   void _scheduleExpirationTimer(Session session) {
@@ -119,7 +115,10 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> logout() async {
     _sessionExpiryTimer?.cancel();
-    await ref.read(pushServiceProvider).unregister();
+    // Deliberately not unregistering the device token here — phones are
+    // personally issued, one per technician, so push should keep reaching
+    // this device (a job assigned overnight, say) even while signed out or
+    // between the 24h session expiring and the next login.
     await ref.read(secureStoreProvider).clear();
     await ref.read(sessionStoreProvider).clear();
     await ref.read(offlineDbProvider).wipe();
@@ -129,5 +128,6 @@ class AuthController extends Notifier<AuthState> {
   void clearError() => state = state.copyWith(clearError: true);
 }
 
-final authControllerProvider =
-    NotifierProvider<AuthController, AuthState>(AuthController.new);
+final authControllerProvider = NotifierProvider<AuthController, AuthState>(
+  AuthController.new,
+);

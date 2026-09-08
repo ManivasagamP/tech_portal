@@ -53,10 +53,10 @@ class SyncClient {
     required OfflineDb db,
     required QueueBus bus,
     Connectivity? connectivity,
-  })  : _api = api,
-        _db = db,
-        _bus = bus,
-        _connectivity = connectivity ?? Connectivity();
+  }) : _api = api,
+       _db = db,
+       _bus = bus,
+       _connectivity = connectivity ?? Connectivity();
 
   final ApiClient _api;
   final OfflineDb _db;
@@ -219,13 +219,14 @@ class SyncClient {
           break;
         } on HttpFailure catch (e) {
           final attempts = mutation.attempts + 1;
-          final drop = attempts >= Env.maxMutationAttempts ||
+          final drop =
+              attempts >= Env.maxMutationAttempts ||
               (e.status >= 400 && e.status < 500);
           if (drop) {
             await _db.addConflict(
               label: mutation.label,
               url: mutation.url,
-              reason: '${e.status}: ${e.message}',
+              reason: e.message,
             );
             await _db.deleteMutation(mutation.clientMutationId);
           } else {
@@ -263,7 +264,9 @@ class SyncClient {
         ? (body['data'] is Map ? body['data']['url'] : body['url'])
         : null;
     if (url is! String || url.isEmpty) {
-      throw const UnknownFailure('Upload did not return a URL');
+      throw const UnknownFailure(
+        "The upload didn't complete. Please try again.",
+      );
     }
     return url;
   }

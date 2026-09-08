@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -10,8 +11,8 @@ import 'app_text.dart';
 class TechnicianLoadingView extends StatefulWidget {
   const TechnicianLoadingView({
     super.key,
-    this.message = 'Initializing technician workspace...',
-    this.submessage = 'Connecting to Field Operations Engine • 24h Secure Session',
+    this.message = 'Loading your workspace...',
+    this.submessage = 'Connecting…',
     this.showBrand = true,
   });
 
@@ -146,7 +147,10 @@ class _TechnicianLoadingViewState extends State<TechnicianLoadingView>
             const SizedBox(height: 24),
             if (widget.showBrand) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: FeColors.infoSoft,
                   borderRadius: BorderRadius.circular(20),

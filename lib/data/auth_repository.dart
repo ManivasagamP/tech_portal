@@ -24,12 +24,13 @@ class AuthRepository {
       data: {'username': username, 'password': password},
     );
     final body = response.data;
-    if (body is! Map) throw const UnknownFailure('Unexpected login response');
+    if (body is! Map)
+      throw const UnknownFailure('Sign-in failed. Please try again.');
 
     final token = body['token']?.toString();
     final technician = body['technician'];
     if (token == null || token.isEmpty || technician is! Map) {
-      throw const UnknownFailure('Login response missing token');
+      throw const UnknownFailure('Sign-in failed. Please try again.');
     }
 
     return LoginResult(

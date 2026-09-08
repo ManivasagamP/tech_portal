@@ -36,10 +36,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 
-    final ok = await ref.read(authControllerProvider.notifier).login(
-          _username.text.trim(),
-          _password.text,
-        );
+    final ok = await ref
+        .read(authControllerProvider.notifier)
+        .login(_username.text.trim(), _password.text);
     if (!mounted) return;
 
     if (ok) {
@@ -73,7 +72,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           children: [
             Icon(LucideIcons.server, size: 20, color: FeColors.primary),
             SizedBox(width: 8),
-            AppText.title('Server Configuration'),
+            AppText.title('Connection Settings'),
           ],
         ),
         content: Column(
@@ -81,14 +80,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const AppText.bodySmall(
-              'Specify the backend API base URL for this terminal.',
+              'Only change this if your IT team has asked you to.',
               color: FeColors.ink2,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
               decoration: const InputDecoration(
-                labelText: 'API Base URL',
+                labelText: 'Server Address',
                 hintText: 'http://localhost:5000',
                 prefixIcon: Icon(LucideIcons.globe, size: 16),
               ),
@@ -143,7 +142,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           height: 90,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: FeColors.primaryLight.withValues(alpha: 0.12),
+                            color: FeColors.primaryLight.withValues(
+                              alpha: 0.12,
+                            ),
                           ),
                         ),
                         // Outer bordered badge ring
@@ -165,7 +166,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             ],
                             border: Border.all(
-                              color: FeColors.primaryLight.withValues(alpha: 0.4),
+                              color: FeColors.primaryLight.withValues(
+                                alpha: 0.4,
+                              ),
                               width: 2,
                             ),
                           ),
@@ -205,7 +208,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                           SizedBox(width: 6),
                           AppText.caption(
-                            '24-HOUR SECURE SESSION',
+                            'SECURE SIGN IN',
                             color: FeColors.ink,
                             weight: FontWeight.w600,
                           ),
@@ -222,7 +225,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 4),
                   const AppText.bodySmall(
-                    'Field operations and service diagnostics terminal',
+                    'Field service app for technicians',
                     align: TextAlign.center,
                     color: FeColors.ink2,
                   ),
@@ -251,7 +254,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           SizedBox(width: 10),
                           Expanded(
                             child: AppText.bodySmall(
-                              'Your 24-hour authentication session expired. Please sign in again.',
+                              "You've been signed out after 24 hours. Please sign in again.",
                               color: FeColors.ink,
                             ),
                           ),
@@ -268,9 +271,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ? const Padding(
                             padding: EdgeInsets.symmetric(vertical: 24),
                             child: TechnicianLoadingView(
-                              message: 'Authenticating credentials...',
-                              submessage:
-                                  'Verifying technician credentials with Field Operations Engine',
+                              message: 'Signing you in...',
+                              submessage: 'Checking your username and password',
                               showBrand: false,
                             ),
                           )
@@ -301,8 +303,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                   validator: (value) =>
                                       (value == null || value.trim().isEmpty)
-                                          ? 'Technician ID or username is required'
-                                          : null,
+                                      ? 'Technician ID or username is required'
+                                      : null,
                                 ),
                                 const SizedBox(height: 16),
 
@@ -332,8 +334,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                   validator: (value) =>
                                       (value == null || value.isEmpty)
-                                          ? 'Password is required'
-                                          : null,
+                                      ? 'Password is required'
+                                      : null,
                                 ),
 
                                 if (auth.error != null) ...[
@@ -344,8 +346,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       color: FeColors.dangerSoft,
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
-                                        color: FeColors.danger
-                                            .withValues(alpha: 0.3),
+                                        color: FeColors.danger.withValues(
+                                          alpha: 0.3,
+                                        ),
                                         width: 1,
                                       ),
                                     ),
@@ -389,7 +392,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         Icon(LucideIcons.logIn, size: 18),
                                         SizedBox(width: 8),
                                         AppText(
-                                          'Access Terminal',
+                                          'Sign In',
                                           color: Colors.white,
                                           weight: FontWeight.w600,
                                         ),
@@ -414,12 +417,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       const SizedBox(width: 4),
                       const AppText.caption(
-                        '24h Token Validity • AES-256 Encrypted',
+                        'Stays signed in for 24 hours',
                         color: FeColors.ink2,
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        tooltip: 'Server Settings',
+                        tooltip: 'Connection Settings',
                         icon: const Icon(
                           LucideIcons.settings2,
                           size: 15,

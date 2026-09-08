@@ -233,11 +233,7 @@ class _ProfileHeroCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFDBEAFE),
-            Color(0xFFEFF6FF),
-            Color(0xFFE0F2FE),
-          ],
+          colors: [Color(0xFFDBEAFE), Color(0xFFEFF6FF), Color(0xFFE0F2FE)],
         ),
         boxShadow: [
           BoxShadow(
@@ -477,10 +473,7 @@ class _PerformanceMetrics extends StatelessWidget {
                     const SizedBox(height: 2),
                     const Text(
                       'All-time completed',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF94A3B8),
-                      ),
+                      style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                     ),
                   ],
                 ),
@@ -581,11 +574,7 @@ class _MetricCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.white,
-            Colors.white,
-            tintColor,
-          ],
+          colors: [Colors.white, Colors.white, tintColor],
           stops: const [0.0, 0.72, 1.0],
         ),
         boxShadow: [
@@ -634,10 +623,7 @@ class _MetricCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             caption,
-            style: const TextStyle(
-              fontSize: 11.5,
-              color: Color(0xFF94A3B8),
-            ),
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
           ),
         ],
       ),
@@ -783,7 +769,7 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Save your assigned jobs to this phone so they open even without network connectivity.',
+            'Save your assigned jobs to this phone so they open even without a signal.',
             style: TextStyle(
               fontSize: 13,
               color: Color(0xFF64748B),
@@ -827,7 +813,7 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
                             ),
                       const SizedBox(width: 8),
                       Text(
-                        _busy ? 'Downloading…' : 'Download Offline Bundle',
+                        _busy ? 'Downloading…' : 'Download for Offline Use',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
