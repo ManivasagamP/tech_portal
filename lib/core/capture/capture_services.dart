@@ -122,13 +122,28 @@ class LocationCapture {
       throw const CaptureFailure('Please enable location access to proceed.');
     }
 
-    final position = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        timeLimit: Duration(seconds: 10),
-      ),
-    );
-    return _named(position.latitude, position.longitude);
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        // `.high` holds out for a GPS-grade fix, which routinely fails to
+        // ever arrive with no signal indoors — a fresh fix this precise is
+        // not worth blocking the job over. `.medium` is satisfied by
+        // network- or cell-assisted positioning too, so it settles quickly
+        // in exactly the conditions `.high` was timing out in.
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      return await _named(position.latitude, position.longitude);
+    } catch (_) {
+      // A fresh fix can still fail outright — no GPS lock and no network to
+      // assist with one. The device's last fix is usually close enough to
+      // say which site the technician is at, and it comes back from cache
+      // instantly rather than needing signal at all.
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return _named(last.latitude, last.longitude);
+      throw const CaptureFailure('Could not get your location.');
+    }
   }
 
   /// Attaches place names to a fix, and never fails because of them: a device

@@ -12,6 +12,28 @@ import '../network/api_exception.dart';
 import 'offline_db.dart';
 import 'queue_bus.dart';
 
+/// The one line shown anywhere a write lands in the offline queue instead of
+/// the server — a note, a photo, a voice recording, a session, a close, an
+/// invite response. Every call site used to word this slightly differently
+/// ("Note saved offline...", "Photo saved offline...", "Session started
+/// offline..."); a technician skimming past several of these back to back
+/// read them as different things happening, when it is always the same one:
+/// the write is queued and will replay automatically once the connection is
+/// back.
+const kOfflineQueuedMessage =
+    "Saved offline. It'll sync automatically once you're back online.";
+
+/// How far the current [SyncClient.flushQueue] run has gotten — the Home
+/// screen's progress bar and the Sync Center screen both read this the same
+/// way [SyncedWrite] is read: as plain synchronous state on [SyncClient],
+/// refreshed through the same [QueueBus] tick every other queue-driven
+/// provider already uses.
+class SyncProgress {
+  const SyncProgress({required this.completed, required this.total});
+  final int completed;
+  final int total;
+}
+
 class SyncedRead<T> {
   const SyncedRead({required this.data, required this.fromCache});
   final T data;
@@ -128,11 +150,22 @@ class SyncClient {
     dynamic data,
     required String label,
     QueuedAttachment? attachment,
+    String? entityType,
+    String? entityId,
   }) async {
     final mutationId = _api.newMutationId();
 
     if (await isOffline) {
-      await _enqueue(mutationId, method, url, data, label, attachment);
+      await _enqueue(
+        mutationId,
+        method,
+        url,
+        data,
+        label,
+        attachment,
+        entityType,
+        entityId,
+      );
       return const SyncedWrite(synced: false);
     }
 
@@ -154,7 +187,16 @@ class SyncClient {
       );
       return SyncedWrite(synced: true, data: response.data);
     } on NetworkFailure {
-      await _enqueue(mutationId, method, url, data, label, attachment);
+      await _enqueue(
+        mutationId,
+        method,
+        url,
+        data,
+        label,
+        attachment,
+        entityType,
+        entityId,
+      );
       return const SyncedWrite(synced: false);
     }
   }
@@ -166,6 +208,8 @@ class SyncClient {
     dynamic data,
     String label,
     QueuedAttachment? attachment,
+    String? entityType,
+    String? entityId,
   ) async {
     await _db.enqueue(
       PendingMutation(
@@ -180,15 +224,32 @@ class SyncClient {
         attachmentName: attachment?.fileName,
         attachmentField: attachment?.field,
         placeholder: attachment?.placeholder,
+        entityType: entityType,
+        entityId: entityId,
       ),
     );
     _bus.notify();
   }
 
-  /// Replays oldest-first and stops at the first network failure so ordering holds.
-  /// A 4xx (or the attempt cap) drops the mutation into the conflict log; a 5xx
-  /// keeps its remaining attempts.
-  Future<void> flushQueue() async {
+  /// Live only while a flush is running, null the rest of the time. [total]
+  /// is fixed to the batch this run started with, so an item queued by the
+  /// technician mid-flush does not make an in-progress bar's denominator
+  /// jump around.
+  SyncProgress? _progress;
+  SyncProgress? get progress => _progress;
+
+  bool get isSyncing => _progress != null;
+
+  /// Replays oldest-first and stops at the first network failure so ordering
+  /// holds. A 4xx (or the attempt cap) drops the mutation into the conflict
+  /// log; a 5xx keeps its remaining attempts.
+  ///
+  /// [stopAfterId] runs only as far as that one mutation — still oldest
+  /// first, since anything queued ahead of it has to go first for ordering
+  /// to hold — rather than draining the whole queue. That is the entire
+  /// difference between a "Sync now" tap on one item and "Sync all": both
+  /// call this, one just stops earlier.
+  Future<void> flushQueue({String? stopAfterId}) async {
     if (_flushing) return;
     if (await isOffline) return;
     _flushing = true;
@@ -196,7 +257,17 @@ class SyncClient {
 
     try {
       final pending = await _db.listMutations();
-      for (final mutation in pending) {
+      if (pending.isEmpty) return;
+
+      final stopIndex = stopAfterId == null
+          ? -1
+          : pending.indexWhere((m) => m.clientMutationId == stopAfterId);
+      final total = stopIndex >= 0 ? stopIndex + 1 : pending.length;
+      _progress = SyncProgress(completed: 0, total: total);
+      _bus.notify();
+
+      for (var i = 0; i < pending.length; i++) {
+        final mutation = pending[i];
         try {
           var body = mutation.body;
           if (mutation.hasAttachment) {
@@ -234,10 +305,19 @@ class SyncClient {
           }
           changed = true;
         }
+
+        _progress = SyncProgress(completed: i + 1, total: total);
+        _bus.notify();
+        if (mutation.clientMutationId == stopAfterId) break;
       }
     } finally {
       _flushing = false;
-      if (changed) _bus.notify();
+      if (_progress != null) {
+        _progress = null;
+        _bus.notify();
+      } else if (changed) {
+        _bus.notify();
+      }
     }
   }
 

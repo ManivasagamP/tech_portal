@@ -272,9 +272,6 @@ abstract final class AppTheme {
         color: onSurfaceMuted,
       ),
     );
-    // Inter — clean, cross-platform, geometric; matches the "Navy
-    // Professional" light redesign direction. The line-height multipliers
-    // above were tuned against Inter's own metrics.
-    return GoogleFonts.interTextTheme(base);
+    return GoogleFonts.montserratTextTheme(base);
   }
 }

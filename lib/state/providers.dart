@@ -10,10 +10,18 @@ import '../data/auth_repository.dart';
 import '../data/notifications_repository.dart';
 
 /// All four are constructed in main() and injected via ProviderScope overrides.
-final secureStoreProvider = Provider<SecureStore>((ref) => throw UnimplementedError());
-final sessionStoreProvider = Provider<SessionStore>((ref) => throw UnimplementedError());
-final apiClientProvider = Provider<ApiClient>((ref) => throw UnimplementedError());
-final offlineDbProvider = Provider<OfflineDb>((ref) => throw UnimplementedError());
+final secureStoreProvider = Provider<SecureStore>(
+  (ref) => throw UnimplementedError(),
+);
+final sessionStoreProvider = Provider<SessionStore>(
+  (ref) => throw UnimplementedError(),
+);
+final apiClientProvider = Provider<ApiClient>(
+  (ref) => throw UnimplementedError(),
+);
+final offlineDbProvider = Provider<OfflineDb>(
+  (ref) => throw UnimplementedError(),
+);
 
 final queueBusProvider = Provider<QueueBus>((ref) {
   final bus = QueueBus();
@@ -45,6 +53,24 @@ final pendingMutationCountProvider = FutureProvider<int>((ref) async {
   return ref.watch(offlineDbProvider).countMutations();
 });
 
+/// The full queue, oldest first — what the Sync Center list renders.
+final pendingMutationsProvider = FutureProvider<List<PendingMutation>>((
+  ref,
+) async {
+  ref.watch(queueChangedProvider);
+  return ref.watch(offlineDbProvider).listMutations();
+});
+
+/// Live progress of the in-flight [SyncClient.flushQueue] run, null when idle.
+/// Reuses [queueChangedProvider]'s tick rather than a stream of its own — a
+/// flush already calls `QueueBus.notify()` after every item, so watching the
+/// same tick and re-reading [SyncClient.progress] keeps this in step with
+/// [pendingMutationsProvider] and [pendingMutationCountProvider] for free.
+final syncProgressProvider = Provider<SyncProgress?>((ref) {
+  ref.watch(queueChangedProvider);
+  return ref.watch(syncClientProvider).progress;
+});
+
 final syncConflictsProvider = FutureProvider<List<SyncConflict>>((ref) async {
   ref.watch(queueChangedProvider);
   return ref.watch(offlineDbProvider).listConflicts();
@@ -58,7 +84,9 @@ final notificationsRepositoryProvider = Provider<NotificationsRepository>(
 /// badge can refresh without holding the whole list.
 final unseenNotificationCountProvider = FutureProvider<int>((ref) async {
   try {
-    final page = await ref.watch(notificationsRepositoryProvider).list(limit: 1);
+    final page = await ref
+        .watch(notificationsRepositoryProvider)
+        .list(limit: 1);
     return page.unseenCount;
   } catch (_) {
     // A badge is not worth surfacing an error for; show nothing.

@@ -10,6 +10,7 @@ import '../../state/order_detail_controller.dart';
 import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
 import '../../widgets/app_text.dart';
+import '../../widgets/tech_popup.dart';
 import '../../widgets/voice_note_player.dart';
 import '../../widgets/voice_waveform.dart';
 
@@ -41,10 +42,9 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
     super.dispose();
   }
 
-  void _report(String? message) {
-    if (message == null || !mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: AppText(message)));
+  void _report(String message, {bool queued = false, bool isError = false}) {
+    if (!mounted) return;
+    showTechPopup(context, message: message, queued: queued, isError: isError);
   }
 
   Future<void> _toggleRecording() async {
@@ -61,12 +61,16 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
         _saving = recording != null;
       });
       if (recording == null) {
-        _report('Nothing was recorded.');
+        _report('Nothing was recorded.', isError: true);
         return;
       }
-      final message = await controller.setRecordVoiceNote(voice: recording);
+      final outcome = await controller.setRecordVoiceNote(voice: recording);
       if (mounted) setState(() => _saving = false);
-      _report(message?.text ?? 'Your recording is attached to this order.');
+      _report(
+        outcome?.text ?? 'Your recording is attached to this order.',
+        queued: outcome?.queued ?? false,
+        isError: outcome != null && !outcome.queued,
+      );
       return;
     }
 
@@ -79,15 +83,19 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
         _amplitudeStream = _voice.amplitudeStream();
       });
     } on CaptureFailure catch (e) {
-      _report(e.message);
+      _report(e.message, isError: true);
     }
   }
 
   Future<void> _delete() async {
-    final message = await ref
+    final outcome = await ref
         .read(checklistControllerProvider(widget.orderKey).notifier)
         .setRecordVoiceNote();
-    _report(message?.text ?? 'The recording has been removed.');
+    _report(
+      outcome?.text ?? 'The recording has been removed.',
+      queued: outcome?.queued ?? false,
+      isError: outcome != null && !outcome.queued,
+    );
   }
 
   @override

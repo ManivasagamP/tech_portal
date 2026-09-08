@@ -45,6 +45,8 @@ class ChecklistRepository {
       data: {'checklistIndex': index, ...updates},
       label: label,
       attachment: attachment,
+      entityType: type.name,
+      entityId: recordId,
     );
     return ChecklistWrite(synced: write.synced, updates: updates);
   }
@@ -54,14 +56,9 @@ class ChecklistRepository {
     String recordId,
     int index, {
     required bool isCompleted,
-  }) =>
-      _put(
-        type,
-        recordId,
-        index,
-        {'isCompleted': isCompleted},
-        label: 'Checklist item',
-      );
+  }) => _put(type, recordId, index, {
+    'isCompleted': isCompleted,
+  }, label: 'Checklist item');
 
   /// Opens a new session. `startTime` is kept at the top level too, because the
   /// server derives the record's own `startedDate` from the first one it sees.
@@ -73,7 +70,9 @@ class ChecklistRepository {
     CapturedPhoto? facePhoto,
     CapturedLocation? location,
   }) {
-    final placeholder = facePhoto == null ? null : '__pending_face_${_uuid.v4()}__';
+    final placeholder = facePhoto == null
+        ? null
+        : '__pending_face_${_uuid.v4()}__';
 
     return _put(
       type,
@@ -107,7 +106,9 @@ class ChecklistRepository {
     CapturedPhoto? facePhoto,
     CapturedLocation? location,
   }) {
-    final placeholder = facePhoto == null ? null : '__pending_face_${_uuid.v4()}__';
+    final placeholder = facePhoto == null
+        ? null
+        : '__pending_face_${_uuid.v4()}__';
 
     return _put(
       type,
@@ -141,7 +142,9 @@ class ChecklistRepository {
     required String text,
     VoiceRecording? voice,
   }) {
-    final placeholder = voice == null ? null : '__pending_audio_${_uuid.v4()}__';
+    final placeholder = voice == null
+        ? null
+        : '__pending_audio_${_uuid.v4()}__';
 
     final note = <String, dynamic>{
       'text': text,
@@ -154,7 +157,9 @@ class ChecklistRepository {
       type,
       recordId,
       index,
-      {'comments': [..._existingNotes(item), note]},
+      {
+        'comments': [..._existingNotes(item), note],
+      },
       label: voice == null ? 'Checklist note' : 'Checklist voice note',
       attachment: voice == null
           ? null
@@ -180,10 +185,7 @@ class ChecklistRepository {
     final legacy = raw?.toString().trim();
     if (legacy == null || legacy.isEmpty) return [];
     return [
-      {
-        'text': legacy,
-        'createdAt': DateTime.now().toUtc().toIso8601String(),
-      },
+      {'text': legacy, 'createdAt': DateTime.now().toUtc().toIso8601String()},
     ];
   }
 
@@ -199,7 +201,9 @@ class ChecklistRepository {
       type,
       recordId,
       index,
-      {'attachments': [...item.attachments, placeholder]},
+      {
+        'attachments': [...item.attachments, placeholder],
+      },
       label: 'Checklist photo',
       attachment: QueuedAttachment(
         bytes: photo.bytes,
@@ -216,19 +220,12 @@ class ChecklistRepository {
     int index, {
     required ChecklistItem item,
     required String url,
-  }) =>
-      _put(
-        type,
-        recordId,
-        index,
-        {
-          'attachments': [
-            for (final a in item.attachments)
-              if (a != url) a,
-          ],
-        },
-        label: 'Remove checklist photo',
-      );
+  }) => _put(type, recordId, index, {
+    'attachments': [
+      for (final a in item.attachments)
+        if (a != url) a,
+    ],
+  }, label: 'Remove checklist photo');
 
   /// A work order carries a single spoken note on the record itself, not per
   /// checklist item. Recording again replaces the previous one.
@@ -237,7 +234,9 @@ class ChecklistRepository {
     String recordId, {
     VoiceRecording? voice,
   }) async {
-    final placeholder = voice == null ? null : '__pending_audio_${_uuid.v4()}__';
+    final placeholder = voice == null
+        ? null
+        : '__pending_audio_${_uuid.v4()}__';
     final updates = <String, dynamic>{'notesAudioUrl': placeholder};
 
     final write = await _sync.syncRequest(
@@ -253,6 +252,8 @@ class ChecklistRepository {
               placeholder: placeholder!,
               field: 'file',
             ),
+      entityType: type.name,
+      entityId: recordId,
     );
     return ChecklistWrite(synced: write.synced, updates: updates);
   }
@@ -269,13 +270,16 @@ class ChecklistRepository {
     return _sync.syncRequest(
       'put',
       '/api/fm/${type.entityPath}/${record.id}',
+      entityType: type.name,
+      entityId: record.id,
       data: {
         'checklists': [
           ...existing is List ? existing : const [],
           {
             // The admin edit page keys its list off this id and deletes by it;
             // without one, every id-less item shares a key and deletes together.
-            'id': 'other-${DateTime.now().millisecondsSinceEpoch}-${_uuid.v4().substring(0, 7)}',
+            'id':
+                'other-${DateTime.now().millisecondsSinceEpoch}-${_uuid.v4().substring(0, 7)}',
             'name': text,
             'task': text,
             'description': text,

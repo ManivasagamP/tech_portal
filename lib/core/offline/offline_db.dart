@@ -19,6 +19,8 @@ class PendingMutation {
     this.attachmentName,
     this.attachmentField,
     this.placeholder,
+    this.entityType,
+    this.entityId,
   });
 
   final String clientMutationId;
@@ -37,35 +39,49 @@ class PendingMutation {
   /// Token inside [body] that gets replaced by the uploaded URL on flush.
   final String? placeholder;
 
+  /// The order this write belongs to — an [OrderType.name], not its slug —
+  /// and its record id. Stamped by the repository at enqueue time rather than
+  /// parsed back out of [url]: the URL shape differs per endpoint (downtime's
+  /// path puts a fixed segment before the record's own vocabulary), so it is
+  /// not reliably reversible. Null for a request that never went through a
+  /// [PendingMutation]-aware repository call. Used only to group and label
+  /// the Sync Center list — never sent to the server.
+  final String? entityType;
+  final String? entityId;
+
   bool get hasAttachment => attachment != null && attachmentField != null;
 
   factory PendingMutation.fromRow(Map<String, Object?> row) => PendingMutation(
-        clientMutationId: row['client_mutation_id'] as String,
-        method: row['method'] as String,
-        url: row['url'] as String,
-        body: row['body'] == null ? null : jsonDecode(row['body'] as String),
-        label: row['label'] as String? ?? 'Change',
-        attempts: row['attempts'] as int? ?? 0,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
-        attachment: row['attachment'] as Uint8List?,
-        attachmentName: row['attachment_name'] as String?,
-        attachmentField: row['attachment_field'] as String?,
-        placeholder: row['placeholder'] as String?,
-      );
+    clientMutationId: row['client_mutation_id'] as String,
+    method: row['method'] as String,
+    url: row['url'] as String,
+    body: row['body'] == null ? null : jsonDecode(row['body'] as String),
+    label: row['label'] as String? ?? 'Change',
+    attempts: row['attempts'] as int? ?? 0,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
+    attachment: row['attachment'] as Uint8List?,
+    attachmentName: row['attachment_name'] as String?,
+    attachmentField: row['attachment_field'] as String?,
+    placeholder: row['placeholder'] as String?,
+    entityType: row['entity_type'] as String?,
+    entityId: row['entity_id'] as String?,
+  );
 
   Map<String, Object?> toRow() => {
-        'client_mutation_id': clientMutationId,
-        'method': method,
-        'url': url,
-        'body': body == null ? null : jsonEncode(body),
-        'label': label,
-        'attempts': attempts,
-        'created_at': createdAt.millisecondsSinceEpoch,
-        'attachment': attachment,
-        'attachment_name': attachmentName,
-        'attachment_field': attachmentField,
-        'placeholder': placeholder,
-      };
+    'client_mutation_id': clientMutationId,
+    'method': method,
+    'url': url,
+    'body': body == null ? null : jsonEncode(body),
+    'label': label,
+    'attempts': attempts,
+    'created_at': createdAt.millisecondsSinceEpoch,
+    'attachment': attachment,
+    'attachment_name': attachmentName,
+    'attachment_field': attachmentField,
+    'placeholder': placeholder,
+    'entity_type': entityType,
+    'entity_id': entityId,
+  };
 }
 
 class SyncConflict {
@@ -86,17 +102,21 @@ class SyncConflict {
   final bool dropped;
 
   factory SyncConflict.fromRow(Map<String, Object?> row) => SyncConflict(
-        id: row['id'] as int,
-        label: row['label'] as String? ?? 'Change',
-        url: row['url'] as String? ?? '',
-        reason: row['reason'] as String? ?? '',
-        at: DateTime.fromMillisecondsSinceEpoch(row['at'] as int),
-        dropped: (row['dropped'] as int? ?? 1) == 1,
-      );
+    id: row['id'] as int,
+    label: row['label'] as String? ?? 'Change',
+    url: row['url'] as String? ?? '',
+    reason: row['reason'] as String? ?? '',
+    at: DateTime.fromMillisecondsSinceEpoch(row['at'] as int),
+    dropped: (row['dropped'] as int? ?? 1) == 1,
+  );
 }
 
 class CachedEntity {
-  const CachedEntity({required this.body, required this.cachedAt, required this.ttlMs});
+  const CachedEntity({
+    required this.body,
+    required this.cachedAt,
+    required this.ttlMs,
+  });
 
   final dynamic body;
   final DateTime cachedAt;
@@ -118,7 +138,7 @@ class OfflineDb {
     final dir = await getDatabasesPath();
     final db = await openDatabase(
       p.join(dir, _fileName),
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE pending_mutations (
@@ -132,7 +152,9 @@ class OfflineDb {
             attachment BLOB,
             attachment_name TEXT,
             attachment_field TEXT,
-            placeholder TEXT
+            placeholder TEXT,
+            entity_type TEXT,
+            entity_id TEXT
           )
         ''');
         await db.execute(
@@ -163,6 +185,19 @@ class OfflineDb {
           )
         ''');
       },
+      // v1 → v2: which order a queued write belongs to, for the Sync Center
+      // list. Existing rows just come back with both columns null — they
+      // still show up in the list, minus the order grouping.
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            'ALTER TABLE pending_mutations ADD COLUMN entity_type TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE pending_mutations ADD COLUMN entity_id TEXT',
+          );
+        }
+      },
     );
     return OfflineDb._(db);
   }
@@ -177,7 +212,10 @@ class OfflineDb {
 
   /// Oldest first — replay order is what keeps RCA → downtime → complete correct.
   Future<List<PendingMutation>> listMutations() async {
-    final rows = await _db.query('pending_mutations', orderBy: 'created_at ASC');
+    final rows = await _db.query(
+      'pending_mutations',
+      orderBy: 'created_at ASC',
+    );
     return rows.map(PendingMutation.fromRow).toList();
   }
 
@@ -188,17 +226,17 @@ class OfflineDb {
       0;
 
   Future<void> deleteMutation(String id) => _db.delete(
-        'pending_mutations',
-        where: 'client_mutation_id = ?',
-        whereArgs: [id],
-      );
+    'pending_mutations',
+    where: 'client_mutation_id = ?',
+    whereArgs: [id],
+  );
 
   Future<void> bumpAttempts(String id, int attempts) => _db.update(
-        'pending_mutations',
-        {'attempts': attempts},
-        where: 'client_mutation_id = ?',
-        whereArgs: [id],
-      );
+    'pending_mutations',
+    {'attempts': attempts},
+    where: 'client_mutation_id = ?',
+    whereArgs: [id],
+  );
 
   Future<CachedEntity?> readCache(String url) async {
     final rows = await _db.query(
@@ -216,16 +254,13 @@ class OfflineDb {
     );
   }
 
-  Future<void> writeCache(String url, dynamic body, Duration ttl) => _db.insert(
-        'cached_entities',
-        {
-          'url': url,
-          'body': jsonEncode(body),
-          'cached_at': DateTime.now().millisecondsSinceEpoch,
-          'ttl_ms': ttl.inMilliseconds,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+  Future<void> writeCache(String url, dynamic body, Duration ttl) =>
+      _db.insert('cached_entities', {
+        'url': url,
+        'body': jsonEncode(body),
+        'cached_at': DateTime.now().millisecondsSinceEpoch,
+        'ttl_ms': ttl.inMilliseconds,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
 
   Future<String?> readMeta(String key) async {
     final rows = await _db.query(
@@ -237,11 +272,10 @@ class OfflineDb {
     return rows.isEmpty ? null : rows.first['value'] as String?;
   }
 
-  Future<void> writeMeta(String key, String value) => _db.insert(
-        'sync_meta',
-        {'key': key, 'value': value},
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+  Future<void> writeMeta(String key, String value) => _db.insert('sync_meta', {
+    'key': key,
+    'value': value,
+  }, conflictAlgorithm: ConflictAlgorithm.replace);
 
   Future<void> addConflict({
     required String label,

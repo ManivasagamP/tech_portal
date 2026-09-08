@@ -179,14 +179,22 @@ class _NavButton extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            AnimatedDefaultTextStyle(
-              duration: context.motion.press,
-              style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                color: active ? const Color(0xFF0284C7) : FeColors.ink2,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                letterSpacing: 0.25,
+            // FittedBox rather than an ellipsis: Montserrat runs noticeably
+            // wider than the Inter metrics this bar was tuned against, and
+            // "Assignments" no longer fits five-across without shrinking —
+            // scaling the whole label down keeps it readable on one line
+            // instead of truncating to "Assignm…".
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: AnimatedDefaultTextStyle(
+                duration: context.motion.press,
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                  color: active ? const Color(0xFF0284C7) : FeColors.ink2,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  letterSpacing: 0.25,
+                ),
+                child: AppText(item.label, maxLines: 1),
               ),
-              child: AppText(item.label),
             ),
           ],
         ),

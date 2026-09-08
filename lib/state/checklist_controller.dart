@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/capture/capture_services.dart';
 import '../core/network/api_exception.dart';
+import '../core/offline/sync_client.dart';
 import '../data/checklist_repository.dart';
 import '../domain/checklist.dart';
 import 'order_detail_controller.dart';
@@ -25,19 +26,20 @@ class ChecklistState {
     int? busyIndex,
     bool? addingOther,
     bool clearBusy = false,
-  }) =>
-      ChecklistState(
-        items: items ?? this.items,
-        busyIndex: clearBusy ? null : (busyIndex ?? this.busyIndex),
-        addingOther: addingOther ?? this.addingOther,
-      );
+  }) => ChecklistState(
+    items: items ?? this.items,
+    busyIndex: clearBusy ? null : (busyIndex ?? this.busyIndex),
+    addingOther: addingOther ?? this.addingOther,
+  );
 }
 
 /// Result of one checklist action, as a message for the technician. Null means
 /// it went straight to the server with nothing worth saying.
 class ActionOutcome {
-  /// The write is parked in the offline queue.
-  const ActionOutcome.queued(this.text) : queued = true;
+  /// The write is parked in the offline queue. Always the same one line —
+  /// see [kOfflineQueuedMessage] — so every action reads as the same thing
+  /// happening instead of a different notice per action type.
+  const ActionOutcome.queued() : text = kOfflineQueuedMessage, queued = true;
 
   /// The write was refused or failed outright.
   const ActionOutcome.failed(this.text) : queued = false;
@@ -54,10 +56,15 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
   ChecklistState build(OrderKey arg) {
     final detail = ref.watch(orderDetailControllerProvider(arg));
 
-    // Only server truth may replace the local list. A cached read after an
-    // offline write is older than what is on screen and would undo it.
+    // Only server truth may replace an *existing* local list — a cached read
+    // after an offline write is older than what is already on screen and
+    // would undo it. But with nothing on screen yet (a cold start with no
+    // prior state), that guard has nothing to protect: refusing the cached
+    // list here left a job with real checklist items reading as "No
+    // checklist items" the moment it was opened offline for the first time,
+    // instead of showing what is actually cached.
     final incoming = detail.valueOrNull;
-    if (incoming != null && !incoming.fromCache) {
+    if (incoming != null && (!incoming.fromCache || stateOrNull == null)) {
       return ChecklistState(items: incoming.record.checklists);
     }
     return ChecklistState(items: stateOrNull?.items ?? const []);
@@ -76,9 +83,8 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
 
   Future<ActionOutcome?> _run(
     int index,
-    Future<ChecklistWrite> Function(ChecklistItem item) action, {
-    required String queuedMessage,
-  }) async {
+    Future<ChecklistWrite> Function(ChecklistItem item) action,
+  ) async {
     if (index < 0 || index >= state.items.length) return null;
     final item = state.items[index];
     state = state.copyWith(busyIndex: index);
@@ -92,7 +98,7 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
         await ref.read(orderDetailControllerProvider(arg).notifier).refresh();
         return null;
       }
-      return ActionOutcome.queued(queuedMessage);
+      return const ActionOutcome.queued();
     } on CaptureFailure catch (e) {
       return ActionOutcome.failed(e.message);
     } on HttpFailure catch (e) {
@@ -110,93 +116,84 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
   }
 
   Future<ActionOutcome?> toggle(int index) => _run(
-        index,
-        (item) => _repository.setCompleted(
-          arg.type,
-          arg.id,
-          index,
-          isCompleted: !item.isCompleted,
-        ),
-        queuedMessage: 'Saved offline. It will sync when you are back online.',
-      );
+    index,
+    (item) => _repository.setCompleted(
+      arg.type,
+      arg.id,
+      index,
+      isCompleted: !item.isCompleted,
+    ),
+  );
 
   Future<ActionOutcome?> startSession(
     int index, {
     CapturedPhoto? facePhoto,
     CapturedLocation? location,
-  }) =>
-      _run(
-        index,
-        (item) => _repository.startSession(
-          arg.type,
-          arg.id,
-          index,
-          item: item,
-          facePhoto: facePhoto,
-          location: location,
-        ),
-        queuedMessage: 'Session started offline. It will sync later.',
-      );
+  }) => _run(
+    index,
+    (item) => _repository.startSession(
+      arg.type,
+      arg.id,
+      index,
+      item: item,
+      facePhoto: facePhoto,
+      location: location,
+    ),
+  );
 
   Future<ActionOutcome?> stopSession(
     int index, {
     CapturedPhoto? facePhoto,
     CapturedLocation? location,
-  }) =>
-      _run(
-        index,
-        (item) => _repository.stopSession(
-          arg.type,
-          arg.id,
-          index,
-          item: item,
-          facePhoto: facePhoto,
-          location: location,
-        ),
-        queuedMessage: 'Session ended offline. It will sync later.',
-      );
+  }) => _run(
+    index,
+    (item) => _repository.stopSession(
+      arg.type,
+      arg.id,
+      index,
+      item: item,
+      facePhoto: facePhoto,
+      location: location,
+    ),
+  );
 
   Future<ActionOutcome?> addNote(
     int index, {
     required String text,
     VoiceRecording? voice,
-  }) =>
-      _run(
-        index,
-        (item) => _repository.addNote(
-          arg.type,
-          arg.id,
-          index,
-          item: item,
-          text: text,
-          voice: voice,
-        ),
-        queuedMessage: 'Note saved offline. It will sync later.',
-      );
+  }) => _run(
+    index,
+    (item) => _repository.addNote(
+      arg.type,
+      arg.id,
+      index,
+      item: item,
+      text: text,
+      voice: voice,
+    ),
+  );
 
   Future<ActionOutcome?> addPhoto(int index, CapturedPhoto photo) => _run(
-        index,
-        (item) => _repository.addAttachment(
-          arg.type,
-          arg.id,
-          index,
-          item: item,
-          photo: photo,
-        ),
-        queuedMessage: 'Photo saved offline. It will upload when you reconnect.',
-      );
+    index,
+    (item) => _repository.addAttachment(
+      arg.type,
+      arg.id,
+      index,
+      item: item,
+      photo: photo,
+    ),
+  );
 
   Future<ActionOutcome?> removePhoto(int index, String url) => _run(
-        index,
-        (item) => _repository.removeAttachment(
-          arg.type,
-          arg.id,
-          index,
-          item: item,
-          url: url,
-        ),
-        queuedMessage: 'Removed offline. It will sync later.',
-      );
+    index,
+    (item) => _repository.removeAttachment(
+      arg.type,
+      arg.id,
+      index,
+      item: item,
+      url: url,
+    ),
+  );
 
   /// The work order's own spoken note. Passing null clears it.
   Future<ActionOutcome?> setRecordVoiceNote({VoiceRecording? voice}) async {
@@ -210,11 +207,7 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
         await ref.read(orderDetailControllerProvider(arg).notifier).refresh();
         return null;
       }
-      return ActionOutcome.queued(
-        voice == null
-            ? 'Removed offline. It will sync later.'
-            : 'Voice note saved offline. It will upload when you reconnect.',
-      );
+      return const ActionOutcome.queued();
     } catch (_) {
       return ActionOutcome.failed(
         voice == null
@@ -227,8 +220,10 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
   /// "Other" items go onto the record itself — the checklist endpoint can only
   /// address an index that already exists.
   Future<ActionOutcome?> addOther(String description) async {
-    final record =
-        ref.read(orderDetailControllerProvider(arg)).valueOrNull?.record;
+    final record = ref
+        .read(orderDetailControllerProvider(arg))
+        .valueOrNull
+        ?.record;
     if (record == null || description.trim().isEmpty) return null;
 
     state = state.copyWith(addingOther: true);
@@ -242,9 +237,7 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
         await ref.read(orderDetailControllerProvider(arg).notifier).refresh();
         return null;
       }
-      return const ActionOutcome.queued(
-        'Task added offline. It will sync when you are back online.',
-      );
+      return const ActionOutcome.queued();
     } on HttpFailure catch (e) {
       return ActionOutcome.failed(
         e.message.isEmpty ? 'Failed to add other task.' : e.message,
@@ -263,9 +256,10 @@ final checklistRepositoryProvider = Provider<ChecklistRepository>(
 
 final checklistControllerProvider =
     NotifierProvider.family<ChecklistController, ChecklistState, OrderKey>(
-  ChecklistController.new,
-);
+      ChecklistController.new,
+    );
 
 final photoCaptureProvider = Provider<PhotoCapture>((ref) => PhotoCapture());
-final locationCaptureProvider =
-    Provider<LocationCapture>((ref) => LocationCapture());
+final locationCaptureProvider = Provider<LocationCapture>(
+  (ref) => LocationCapture(),
+);

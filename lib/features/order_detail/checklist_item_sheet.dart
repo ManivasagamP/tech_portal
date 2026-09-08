@@ -8,13 +8,13 @@ import '../../core/capture/capture_services.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/checklist.dart';
 import '../../state/checklist_controller.dart';
-import '../../state/providers.dart';
 import '../../state/order_detail_controller.dart';
 import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
 import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 import '../../widgets/photo_viewer.dart';
+import '../../widgets/tech_popup.dart';
 import '../../widgets/voice_note_player.dart';
 import '../../widgets/voice_waveform.dart';
 import 'verification_sheet.dart';
@@ -45,15 +45,6 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
   bool _recording = false;
   Stream<Amplitude>? _amplitudeStream;
 
-  /// Shown inside the sheet. A SnackBar cannot be used here: the messenger
-  /// belongs to the Scaffold underneath, so its message renders behind this
-  /// sheet and the technician sees nothing at all when a write is rejected.
-  String? _message;
-
-  /// Whether [_message] is a "saved offline" notice. Once the queue drains the
-  /// notice is stale — it would keep promising a sync that already happened.
-  bool _messageIsQueued = false;
-
   @override
   void dispose() {
     _noteController.dispose();
@@ -66,10 +57,12 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
 
   void _report(ActionOutcome? outcome) {
     if (outcome == null || !mounted) return;
-    setState(() {
-      _message = outcome.text;
-      _messageIsQueued = outcome.queued;
-    });
+    showTechPopup(
+      context,
+      message: outcome.text,
+      queued: outcome.queued,
+      isError: !outcome.queued,
+    );
   }
 
   /// A session start or end may be gated behind a photo and a location fix.
@@ -171,17 +164,6 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // "Saved offline" is only true while the write is still queued. When the
-    // queue empties the write has landed, so the notice goes with it.
-    ref.listen(pendingMutationCountProvider, (_, next) {
-      if (_messageIsQueued && next.valueOrNull == 0) {
-        setState(() {
-          _message = null;
-          _messageIsQueued = false;
-        });
-      }
-    });
-
     final state = ref.watch(checklistControllerProvider(widget.orderKey));
     if (widget.index >= state.items.length) return const SizedBox.shrink();
 
@@ -271,14 +253,6 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
               ),
             ),
             if (busy) const LinearProgressIndicator(minHeight: 2),
-            if (_message != null)
-              _SheetMessage(
-                message: _message!,
-                onDismiss: () => setState(() {
-                  _message = null;
-                  _messageIsQueued = false;
-                }),
-              ),
             Flexible(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
@@ -775,38 +749,6 @@ class _NoteComposer extends StatelessWidget {
           icon: const Icon(LucideIcons.send, size: 20),
         ),
       ],
-    ),
-  );
-}
-
-/// Inline feedback for an action taken in this sheet — a rejection from the
-/// server, or confirmation that something was queued offline.
-class _SheetMessage extends StatelessWidget {
-  const _SheetMessage({required this.message, required this.onDismiss});
-
-  final String message;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-    child: TechCard(
-      radius: context.radii.card,
-      padding: const EdgeInsets.all(12),
-      tint: FeColors.warningSoft,
-      borderColor: FeColors.warning.withValues(alpha: 0.3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(LucideIcons.info, size: 16, color: FeColors.warning),
-          const SizedBox(width: 8),
-          Expanded(child: AppText.bodySmall(message, color: FeColors.warning)),
-          GestureDetector(
-            onTap: onDismiss,
-            child: Icon(LucideIcons.x, size: 14, color: FeColors.warning),
-          ),
-        ],
-      ),
     ),
   );
 }

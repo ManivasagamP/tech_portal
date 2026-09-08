@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/offline/sync_client.dart';
 import '../../core/utils/checklist_status.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/checklist.dart';
@@ -12,6 +13,7 @@ import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
 import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
+import '../../widgets/tech_popup.dart';
 import 'checklist_item_sheet.dart';
 import 'close_sheet.dart';
 
@@ -56,12 +58,16 @@ class ChecklistTab extends ConsumerWidget {
     );
     if (description == null || description.isEmpty) return;
 
-    final message = await ref
+    final outcome = await ref
         .read(checklistControllerProvider(orderKey).notifier)
         .addOther(description);
-    if (message != null && context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: AppText(message.text)));
+    if (outcome != null && context.mounted) {
+      showTechPopup(
+        context,
+        message: outcome.text,
+        queued: outcome.queued,
+        isError: !outcome.queued,
+      );
     }
   }
 
@@ -91,12 +97,16 @@ class ChecklistTab extends ConsumerWidget {
                 busy: state.busyIndex == index,
                 onOpen: () => _openItem(context, index),
                 onToggle: () async {
-                  final message = await ref
+                  final outcome = await ref
                       .read(checklistControllerProvider(orderKey).notifier)
                       .toggle(index);
-                  if (message != null && context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: AppText(message.text)));
+                  if (outcome != null && context.mounted) {
+                    showTechPopup(
+                      context,
+                      message: outcome.text,
+                      queued: outcome.queued,
+                      isError: !outcome.queued,
+                    );
                   }
                 },
               ),
@@ -141,10 +151,7 @@ class _ProgressHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    AppText.titleSmall(
-                      'Checklist',
-                      weight: FontWeight.w600,
-                    ),
+                    AppText.titleSmall('Checklist', weight: FontWeight.w600),
                     AppText.caption(
                       complete ? 'All tasks completed' : 'Track progress',
                       color: FeColors.ink2,
@@ -182,10 +189,7 @@ class _ProgressHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          AppText.bodySmall(
-            summary.state.label,
-            color: FeColors.ink2,
-          ),
+          AppText.bodySmall(summary.state.label, color: FeColors.ink2),
         ],
       ),
     );
@@ -240,9 +244,7 @@ class _ChecklistRow extends StatelessWidget {
                       child: AppText.bodyMedium(
                         shortChecklistTitle(item.title),
                         weight: FontWeight.w600,
-                        color: item.isCompleted
-                            ? FeColors.ink2
-                            : FeColors.ink,
+                        color: item.isCompleted ? FeColors.ink2 : FeColors.ink,
                       ),
                     ),
                     if (item.isOther)
@@ -285,11 +287,7 @@ class _ChecklistRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(
-            LucideIcons.chevronRight,
-            size: 16,
-            color: FeColors.ink2,
-          ),
+          const Icon(LucideIcons.chevronRight, size: 16, color: FeColors.ink2),
         ],
       ),
     );
@@ -349,10 +347,7 @@ class _Meta extends StatelessWidget {
     children: [
       Icon(icon, size: 12, color: FeColors.ink2),
       const SizedBox(width: 4),
-      AppText.caption(
-        label,
-        color: FeColors.ink2,
-      ),
+      AppText.caption(label, color: FeColors.ink2),
     ],
   );
 }
@@ -414,8 +409,8 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
     );
 
     if (message != null && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: AppText(message)));
+      final queued = message == kOfflineQueuedMessage;
+      showTechPopup(context, message: message, queued: queued);
     }
   }
 

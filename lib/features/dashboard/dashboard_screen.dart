@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +10,7 @@ import '../../state/auth_controller.dart';
 import '../../state/dashboard_controller.dart';
 import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
+import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/order_card.dart';
@@ -64,6 +66,7 @@ class DashboardScreen extends ConsumerWidget {
                 greeting: greetingFor(DateTime.now()),
               ),
               const SizedBox(height: 16),
+              const _SyncStatusCard(),
 
               // 3-up stat row: Progress, Overdue, Due Today
               IntrinsicHeight(
@@ -343,11 +346,7 @@ class _HeroGreetingCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFDBEAFE),
-            Color(0xFFEFF6FF),
-            Color(0xFFE0F2FE),
-          ],
+          colors: [Color(0xFFDBEAFE), Color(0xFFEFF6FF), Color(0xFFE0F2FE)],
         ),
         boxShadow: [
           BoxShadow(
@@ -476,6 +475,77 @@ class _HeroWavePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// The Home screen's own view of the offline queue — richer than the thin
+/// bar every screen already carries (see widgets/offline_banner.dart): a
+/// progress bar while a flush is actively running, otherwise just the
+/// backlog count. Tapping it opens the Sync Center, the one place with the
+/// full list and per-item control. Renders nothing once the queue is empty,
+/// same as the thin bar.
+class _SyncStatusCard extends ConsumerWidget {
+  const _SyncStatusCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending = ref.watch(pendingMutationCountProvider).valueOrNull ?? 0;
+    final progress = ref.watch(syncProgressProvider);
+    if (pending == 0 && progress == null) return const SizedBox.shrink();
+
+    final syncing = progress != null;
+    final value = syncing
+        ? (progress.total == 0 ? 1.0 : progress.completed / progress.total)
+        : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TechCard(
+        onTap: () => context.push(Routes.syncCenter),
+        padding: const EdgeInsets.all(14),
+        tint: FeColors.warningSoft,
+        borderColor: FeColors.warning.withValues(alpha: 0.25),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  syncing ? LucideIcons.refreshCw : LucideIcons.cloudUpload,
+                  size: 16,
+                  color: FeColors.warning,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: AppText.bodySmall(
+                    syncing
+                        ? 'Syncing ${progress.completed} of ${progress.total}…'
+                        : '$pending item${pending == 1 ? '' : 's'} waiting to sync',
+                    weight: FontWeight.w700,
+                    color: FeColors.warning,
+                  ),
+                ),
+                const Icon(
+                  LucideIcons.chevronRight,
+                  size: 16,
+                  color: FeColors.warning,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: value,
+                minHeight: 6,
+                backgroundColor: FeColors.warning.withValues(alpha: 0.15),
+                valueColor: const AlwaysStoppedAnimation(FeColors.warning),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Progress Ring tile
 class _ProgressTile extends StatelessWidget {
   const _ProgressTile({
@@ -502,11 +572,7 @@ class _ProgressTile extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.white,
-            Colors.white,
-            Color(0xFFE0F2FE),
-          ],
+          colors: [Colors.white, Colors.white, Color(0xFFE0F2FE)],
           stops: [0.0, 0.75, 1.0],
         ),
         boxShadow: [
@@ -583,11 +649,7 @@ class _StatCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.white,
-            Colors.white,
-            tintColor,
-          ],
+          colors: [Colors.white, Colors.white, tintColor],
           stops: const [0.0, 0.75, 1.0],
         ),
         boxShadow: [
@@ -658,10 +720,7 @@ class _ScanQrActionCard extends StatelessWidget {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF0284C7),
-                  Color(0xFF0369A1),
-                ],
+                colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
               ),
               boxShadow: [
                 BoxShadow(
@@ -675,11 +734,7 @@ class _ScanQrActionCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  LucideIcons.qrCode,
-                  color: Colors.white,
-                  size: 26,
-                ),
+                const Icon(LucideIcons.qrCode, color: Colors.white, size: 26),
                 const SizedBox(height: 18),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -761,15 +816,22 @@ class _WorkOrdersActionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    // FittedBox rather than an ellipsis — Montserrat runs
+                    // wider than the Inter metrics this card was tuned
+                    // against, and "Work Orders" no longer fits next to the
+                    // arrow button without shrinking slightly.
                     const Flexible(
-                      child: Text(
-                        'Work Orders',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: FeColors.ink,
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w700,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Work Orders',
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: FeColors.ink,
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -891,8 +953,14 @@ class _RadiantSparklePainter extends CustomPainter {
     ];
 
     for (final angle in angles) {
-      final start = center + Offset(math.cos(angle) * radius, math.sin(angle) * radius);
-      final end = center + Offset(math.cos(angle) * (radius + rayLength), math.sin(angle) * (radius + rayLength));
+      final start =
+          center + Offset(math.cos(angle) * radius, math.sin(angle) * radius);
+      final end =
+          center +
+          Offset(
+            math.cos(angle) * (radius + rayLength),
+            math.sin(angle) * (radius + rayLength),
+          );
       canvas.drawLine(start, end, paint);
     }
   }

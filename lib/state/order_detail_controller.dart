@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/offline/sync_client.dart';
 import '../data/assignment_repository.dart';
 import '../data/history_repository.dart';
 import '../domain/history_entry.dart';
@@ -25,8 +26,7 @@ class OrderDetail {
   final bool queuedComplete;
 }
 
-class OrderDetailController
-    extends FamilyAsyncNotifier<OrderDetail, OrderKey> {
+class OrderDetailController extends FamilyAsyncNotifier<OrderDetail, OrderKey> {
   var _disposed = false;
 
   @override
@@ -49,14 +49,11 @@ class OrderDetailController
   }
 
   Future<bool> _hasQueuedComplete() async {
-    final endpoint =
-        '/api/fm/${arg.type.completePath}/${arg.id}/time-tracking';
+    final endpoint = '/api/fm/${arg.type.completePath}/${arg.id}/time-tracking';
     final mutations = await ref.read(offlineDbProvider).listMutations();
     return mutations.any((m) {
       final body = m.body;
-      return m.url == endpoint &&
-          body is Map &&
-          body['action'] == 'complete';
+      return m.url == endpoint && body is Map && body['action'] == 'complete';
     });
   }
 
@@ -80,17 +77,17 @@ class OrderDetailController
       // The orders list carries the same record and would keep showing the
       // invite until it refetched on its own.
       ref.invalidate(ordersControllerProvider);
-      return write.synced
-          ? null
-          : 'Saved offline. It will send when you are back online.';
+      return write.synced ? null : kOfflineQueuedMessage;
     } catch (e) {
       return 'Failed to respond to this job assignment offer.';
     }
   }
 }
 
-final orderDetailControllerProvider = AsyncNotifierProvider.family<
-    OrderDetailController, OrderDetail, OrderKey>(OrderDetailController.new);
+final orderDetailControllerProvider =
+    AsyncNotifierProvider.family<OrderDetailController, OrderDetail, OrderKey>(
+      OrderDetailController.new,
+    );
 
 final assignmentRepositoryProvider = Provider<AssignmentRepository>(
   (ref) => AssignmentRepository(ref.watch(syncClientProvider)),
@@ -102,5 +99,5 @@ final historyRepositoryProvider = Provider<HistoryRepository>(
 
 final orderHistoryProvider =
     FutureProvider.family<List<HistoryEntry>, OrderKey>(
-  (ref, key) => ref.watch(historyRepositoryProvider).list(key.type, key.id),
-);
+      (ref, key) => ref.watch(historyRepositoryProvider).list(key.type, key.id),
+    );

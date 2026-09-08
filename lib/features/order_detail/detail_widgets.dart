@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/offline/sync_client.dart';
 import '../../core/utils/checklist_status.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/maintenance_record.dart';
@@ -9,6 +10,7 @@ import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
 import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
+import '../../widgets/tech_popup.dart';
 
 /// Work-order status block. Read-only: Start and Complete live on the
 /// checklist tab, which has the completion context the close flow needs.
@@ -132,10 +134,7 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
                   const SizedBox(height: 4),
                   const Text(
                     'Time Elapsed',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: Color(0xFF64748B),
-                    ),
+                    style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
                   ),
                 ],
               ),
@@ -454,15 +453,20 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
     final message = await widget.respond(accept: accept, reason: reason);
     if (!mounted) return;
     setState(() => _responding = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: AppText(
+
+    // `respond` returns null on a plain success, kOfflineQueuedMessage when
+    // the reply is queued offline, or its own failure text — the only three
+    // shapes it can hand back.
+    final queued = message == kOfflineQueuedMessage;
+    showTechPopup(
+      context,
+      message:
           message ??
-              (accept
-                  ? 'This task is now yours.'
-                  : 'It has been passed to the next available technician.'),
-        ),
-      ),
+          (accept
+              ? 'This task is now yours.'
+              : 'It has been passed to the next available technician.'),
+      queued: queued,
+      isError: message != null && !queued,
     );
   }
 
@@ -483,70 +487,72 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: TechCard(
-      padding: const EdgeInsets.all(18),
-      tint: FeColors.warningSoft,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                height: 36,
-                width: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: FeColors.warning.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+        padding: const EdgeInsets.all(18),
+        tint: FeColors.warningSoft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  height: 36,
+                  width: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: FeColors.warning.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    LucideIcons.triangleAlert,
+                    size: 18,
+                    color: FeColors.warning,
+                  ),
                 ),
-                child: Icon(
-                  LucideIcons.triangleAlert,
-                  size: 18,
+                const SizedBox(width: 10),
+                AppText.titleSmall(
+                  'Job Assignment Offer',
                   color: FeColors.warning,
+                  weight: FontWeight.w700,
                 ),
-              ),
-              const SizedBox(width: 10),
-              AppText.titleSmall(
-                'Job Assignment Offer',
-                color: FeColors.warning,
-                weight: FontWeight.w700,
-              ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            AppText.bodySmall(
+              'You have a pending job assignment for this task. Accept to claim the job, '
+              'or decline with a reason to pass it back to dispatch.',
+              color: FeColors.ink2,
+            ),
+            if (widget.record.assignmentChain.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _AssignmentChain(chain: widget.record.assignmentChain),
             ],
-          ),
-          const SizedBox(height: 8),
-          AppText.bodySmall(
-            'You have a pending job assignment for this task. Accept to claim the job, '
-            'or decline with a reason to pass it back to dispatch.',
-            color: FeColors.ink2,
-          ),
-          if (widget.record.assignmentChain.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _AssignmentChain(chain: widget.record.assignmentChain),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _responding ? null : () => _respond(accept: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: FeColors.success,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(LucideIcons.check, size: 16),
+                  label: const AppText('Accept'),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: _responding ? null : _openDeclineDialog,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: FeColors.danger,
+                    side: BorderSide(
+                      color: FeColors.danger.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  icon: const Icon(LucideIcons.x, size: 16),
+                  label: const AppText('Decline'),
+                ),
+              ],
+            ),
           ],
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              ElevatedButton.icon(
-                onPressed: _responding ? null : () => _respond(accept: true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: FeColors.success,
-                  foregroundColor: Colors.white,
-                ),
-                icon: const Icon(LucideIcons.check, size: 16),
-                label: const AppText('Accept'),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: _responding ? null : _openDeclineDialog,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: FeColors.danger,
-                  side: BorderSide(color: FeColors.danger.withValues(alpha: 0.3)),
-                ),
-                icon: const Icon(LucideIcons.x, size: 16),
-                label: const AppText('Decline'),
-              ),
-            ],
-          ),
-        ],
         ),
       ),
     );
@@ -590,10 +596,7 @@ class _AssignmentChain extends StatelessWidget {
                     color: FeColors.warning,
                   ),
                 ),
-                AppText.caption(
-                  entry.status,
-                  color: FeColors.warning,
-                ),
+                AppText.caption(entry.status, color: FeColors.warning),
               ],
             ),
           ),
@@ -671,16 +674,9 @@ class _Fact extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppText.caption(
-          label,
-          color: FeColors.ink2,
-        ),
+        AppText.caption(label, color: FeColors.ink2),
         const SizedBox(height: 2),
-        AppText.bodyMedium(
-          value,
-          color: FeColors.ink,
-          weight: FontWeight.w500,
-        ),
+        AppText.bodyMedium(value, color: FeColors.ink, weight: FontWeight.w500),
       ],
     );
   }
@@ -710,12 +706,7 @@ class DetailMetaRow extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: FeColors.ink2),
         const SizedBox(width: 8),
-        Expanded(
-          child: AppText.bodySmall(
-            text,
-            color: FeColors.ink2,
-          ),
-        ),
+        Expanded(child: AppText.bodySmall(text, color: FeColors.ink2)),
       ],
     ),
   );

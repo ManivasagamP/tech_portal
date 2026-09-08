@@ -14,14 +14,15 @@ class AssignmentRepository {
     String id, {
     required bool accept,
     String? reason,
-  }) =>
-      _sync.syncRequest(
-        'post',
-        '/api/fm/${type.entityPath}/$id/assignment/respond',
-        data: {
-          'action': accept ? 'accept' : 'decline',
-          if (!accept) 'reason': reason,
-        },
-        label: accept ? 'Accept assignment' : 'Decline assignment',
-      );
+  }) => _sync.syncRequest(
+    'post',
+    '/api/fm/${type.entityPath}/$id/assignment/respond',
+    data: {
+      'action': accept ? 'accept' : 'decline',
+      if (!accept) 'reason': reason,
+    },
+    label: accept ? 'Accept assignment' : 'Decline assignment',
+    entityType: type.name,
+    entityId: id,
+  );
 }

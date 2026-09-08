@@ -38,16 +38,17 @@ class CloseRepository {
     String recordId, {
     String? rootCause,
     String? rcaNotes,
-  }) =>
-      _sync.syncRequest(
-        'post',
-        '/api/fm/${type.rcaPath}/$recordId/rca',
-        data: {
-          if (rootCause != null && rootCause.isNotEmpty) 'rootCause': rootCause,
-          if (rcaNotes != null && rcaNotes.isNotEmpty) 'rcaNotes': rcaNotes,
-        },
-        label: 'Root cause',
-      );
+  }) => _sync.syncRequest(
+    'post',
+    '/api/fm/${type.rcaPath}/$recordId/rca',
+    data: {
+      if (rootCause != null && rootCause.isNotEmpty) 'rootCause': rootCause,
+      if (rcaNotes != null && rcaNotes.isNotEmpty) 'rcaNotes': rcaNotes,
+    },
+    label: 'Root cause',
+    entityType: type.name,
+    entityId: recordId,
+  );
 
   /// Step 2. One idempotent PATCH carrying start, end and impact — downtime
   /// lives in three columns on the record itself, so there is no log row to
@@ -58,17 +59,18 @@ class CloseRepository {
     required DateTime startedAt,
     required DateTime endedAt,
     required DowntimeImpact impact,
-  }) =>
-      _sync.syncRequest(
-        'patch',
-        '/api/fm/downtime/${type.downtimePath}/$recordId',
-        data: {
-          'startedAt': startedAt.toUtc().toIso8601String(),
-          'endedAt': endedAt.toUtc().toIso8601String(),
-          'impact': impact.wire,
-        },
-        label: 'Downtime',
-      );
+  }) => _sync.syncRequest(
+    'patch',
+    '/api/fm/downtime/${type.downtimePath}/$recordId',
+    data: {
+      'startedAt': startedAt.toUtc().toIso8601String(),
+      'endedAt': endedAt.toUtc().toIso8601String(),
+      'impact': impact.wire,
+    },
+    label: 'Downtime',
+    entityType: type.name,
+    entityId: recordId,
+  );
 
   /// Did the record actually end up closed? Asked after a 5xx on the closing
   /// call, because `workOrderController.ts` completes the work order and only
@@ -76,8 +78,7 @@ class CloseRepository {
   /// has already committed by the time the 500 reaches us.
   Future<bool> isCompleted(OrderType type, String recordId) async {
     try {
-      final response =
-          await _api.get('/api/fm/${type.entityPath}/$recordId');
+      final response = await _api.get('/api/fm/${type.entityPath}/$recordId');
       final record = unwrapMap(response.data);
       if (asDate(record['completedDate']) != null) return true;
       final status = record['status']?.toString().toLowerCase().trim();
@@ -94,15 +95,16 @@ class CloseRepository {
     String recordId, {
     double? actualHours,
     String? rootCause,
-  }) =>
-      _sync.syncRequest(
-        'post',
-        '/api/fm/${type.completePath}/$recordId/time-tracking',
-        data: {
-          'action': 'complete',
-          'actualHours': ?actualHours,
-          if (rootCause != null && rootCause.isNotEmpty) 'rootCause': rootCause,
-        },
-        label: 'Close ${type.label.toLowerCase()}',
-      );
+  }) => _sync.syncRequest(
+    'post',
+    '/api/fm/${type.completePath}/$recordId/time-tracking',
+    data: {
+      'action': 'complete',
+      'actualHours': ?actualHours,
+      if (rootCause != null && rootCause.isNotEmpty) 'rootCause': rootCause,
+    },
+    label: 'Close ${type.label.toLowerCase()}',
+    entityType: type.name,
+    entityId: recordId,
+  );
 }

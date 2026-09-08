@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/offline/sync_client.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/downtime.dart';
 import '../../domain/maintenance_record.dart';
@@ -10,6 +11,7 @@ import '../../state/order_detail_controller.dart';
 import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
 import '../../widgets/app_text.dart';
+import '../../widgets/tech_popup.dart';
 
 /// The one screen that closes a job: how long the asset was down, and — for
 /// Critical and High priority — why it went wrong. Submitting runs root cause,
@@ -68,7 +70,6 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
   bool _forceRcaVisible = false;
 
   bool _submitting = false;
-  String? _message;
 
   bool get _rcaVisible =>
       rcaRequiredForPriority(widget.record.priority) || _forceRcaVisible;
@@ -155,7 +156,6 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
     if (_submitting) return;
     setState(() {
       _submitting = true;
-      _message = null;
       _rootCauseError = null;
     });
 
@@ -183,7 +183,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
         if (!mounted) return;
         Navigator.of(context).pop(
           queued
-              ? 'Close saved offline. It will be submitted when you are back online.'
+              ? kOfflineQueuedMessage
               : 'Job closed. Downtime and root cause captured.',
         );
       case CloseAlreadyClosed():
@@ -204,21 +204,23 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
             _forceRcaVisible = true;
             _rootCauseError = 'Required at Critical or High priority.';
           }
-          // The server's own text is written for whoever is calling the API —
-          // the root-cause refusal names an endpoint and a request field. Say
-          // it in the technician's terms when the gate is one we know, and
-          // fall back to the server's wording only for a gate we do not.
-          _message = needsRootCause
+        });
+        // The server's own text is written for whoever is calling the API —
+        // the root-cause refusal names an endpoint and a request field. Say
+        // it in the technician's terms when the gate is one we know, and
+        // fall back to the server's wording only for a gate we do not.
+        showTechPopup(
+          context,
+          message: needsRootCause
               ? 'Choose why it went wrong before closing this job.'
               : needsChecklist
               ? 'Complete at least one checklist task before closing.'
-              : message;
-        });
+              : message,
+          isError: true,
+        );
       case CloseFailed(:final message):
-        setState(() {
-          _submitting = false;
-          _message = message;
-        });
+        setState(() => _submitting = false);
+        showTechPopup(context, message: message, isError: true);
     }
   }
 
@@ -279,13 +281,6 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (_message != null) ...[
-                      _CloseBanner(
-                        message: _message!,
-                        onDismiss: () => setState(() => _message = null),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
                     AppText.titleSmall(
                       '1. How long it was down',
                       weight: FontWeight.w700,
@@ -570,38 +565,6 @@ class _CloseNote extends StatelessWidget {
         Icon(icon, size: 16, color: tone),
         const SizedBox(width: 10),
         Expanded(child: AppText.bodySmall(text, color: FeColors.ink2)),
-      ],
-    ),
-  );
-}
-
-/// Refusals show here rather than in a SnackBar: the messenger belongs to the
-/// screen underneath, so its message would render behind this sheet.
-class _CloseBanner extends StatelessWidget {
-  const _CloseBanner({required this.message, required this.onDismiss});
-
-  final String message;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-    decoration: BoxDecoration(
-      color: FeColors.dangerSoft,
-      borderRadius: BorderRadius.circular(context.radii.md),
-      border: Border.all(color: FeColors.dangerSoft),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(LucideIcons.triangleAlert, size: 16, color: FeColors.danger),
-        const SizedBox(width: 10),
-        Expanded(child: AppText.bodySmall(message, color: FeColors.danger)),
-        IconButton(
-          onPressed: onDismiss,
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(LucideIcons.x, size: 14, color: FeColors.danger),
-        ),
       ],
     ),
   );

@@ -13,6 +13,7 @@ import '../features/overview/overview_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/scanner/scanner_screen.dart';
 import '../features/shell/technician_shell.dart';
+import '../features/sync/sync_center_screen.dart';
 import '../features/twin/twin_screen.dart';
 import '../features/web/web_page_screen.dart';
 import '../state/auth_controller.dart';
@@ -28,6 +29,7 @@ abstract final class Routes {
   static const calendar = '/calendar';
   static const notifications = '/notifications';
   static const scan = '/scan';
+  static const syncCenter = '/sync';
 
   static String orderDetail(String type, String id) => '/orders/$type/$id';
   static String twin(String assetId) => '/twin/$assetId';
@@ -35,10 +37,7 @@ abstract final class Routes {
   /// The built-in browser. The address is a query parameter rather than a path
   /// segment so slashes in it survive.
   static String webPage(String url, {String? title}) {
-    final query = {
-      'url': url,
-      'title': ?title,
-    };
+    final query = {'url': url, 'title': ?title};
     return Uri(path: '/web', queryParameters: query).toString();
   }
 
@@ -87,36 +86,46 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, navigationShell) =>
             TechnicianShell(navigationShell: navigationShell),
         branches: [
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: Routes.dashboard,
-              builder: (context, state) => const DashboardScreen(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: Routes.overview,
-              builder: (context, state) => const OverviewScreen(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: Routes.orders,
-              builder: (context, state) => const OrdersScreen(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: Routes.invites,
-              builder: (context, state) => const InvitesScreen(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: Routes.profile,
-              builder: (context, state) => const ProfileScreen(),
-            ),
-          ]),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.dashboard,
+                builder: (context, state) => const DashboardScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.overview,
+                builder: (context, state) => const OverviewScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.orders,
+                builder: (context, state) => const OrdersScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.invites,
+                builder: (context, state) => const InvitesScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.profile,
+                builder: (context, state) => const ProfileScreen(),
+              ),
+            ],
+          ),
         ],
       ),
       GoRoute(
@@ -141,6 +150,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.scan,
         parentNavigatorKey: _rootKey,
         builder: (context, state) => const ScannerScreen(),
+      ),
+      GoRoute(
+        path: Routes.syncCenter,
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const SyncCenterScreen(),
       ),
       GoRoute(
         path: '/web',
