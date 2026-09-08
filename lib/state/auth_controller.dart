@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/network/api_exception.dart';
+import '../core/push/push_service.dart';
 import '../core/storage/session_store.dart';
 import 'providers.dart';
 
@@ -59,6 +60,9 @@ class AuthController extends Notifier<AuthState> {
     final session = store.readSession();
     if (session != null) {
       _scheduleExpirationTimer(session);
+      // Re-register the device token on app resume — it may have rotated
+      // since the last cold start, and FCM has no other way to tell us.
+      ref.read(pushServiceProvider).init();
     }
 
     return AuthState(
@@ -105,6 +109,7 @@ class AuthController extends Notifier<AuthState> {
 
       state = AuthState(session: result.session, permissions: permissions);
       ref.read(syncClientProvider).startAutoFlush();
+      ref.read(pushServiceProvider).init();
       return true;
     } on ApiFailure catch (e) {
       state = state.copyWith(isBusy: false, error: e.message);
@@ -114,6 +119,7 @@ class AuthController extends Notifier<AuthState> {
 
   Future<void> logout() async {
     _sessionExpiryTimer?.cancel();
+    await ref.read(pushServiceProvider).unregister();
     await ref.read(secureStoreProvider).clear();
     await ref.read(sessionStoreProvider).clear();
     await ref.read(offlineDbProvider).wipe();

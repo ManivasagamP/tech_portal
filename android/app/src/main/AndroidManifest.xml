@@ -11,6 +11,10 @@
     <!-- A scanned QR code buzzes the phone: the technician is usually looking
          at the sticker, not the screen, when it reads. -->
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- Android 13+ (API 33) requires this to show any notification, push
+         included — without it FirebaseMessaging.requestPermission() has
+         nothing to grant. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="Technician"
         android:name="${applicationName}"

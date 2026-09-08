@@ -36,8 +36,9 @@ class CloseSheet extends ConsumerStatefulWidget {
 }
 
 class _CloseSheetState extends ConsumerState<CloseSheet> {
-  late final CloseSubmitter _submitter =
-      CloseSubmitter(ref.read(closeRepositoryProvider));
+  late final CloseSubmitter _submitter = CloseSubmitter(
+    ref.read(closeRepositoryProvider),
+  );
   final _notesController = TextEditingController();
 
   DateTime? _start;
@@ -101,9 +102,11 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
 
     final stillOpen = history.where((w) => w.isOpen).toList();
     final mine = stillOpen
-        .where((w) =>
-            w.source == widget.record.type.downtimeSource &&
-            w.sourceId == widget.record.id)
+        .where(
+          (w) =>
+              w.source == widget.record.type.downtimeSource &&
+              w.sourceId == widget.record.id,
+        )
         .firstOrNull;
 
     _openWindow = mine;
@@ -131,8 +134,13 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
     );
     if (time == null || !mounted) return;
 
-    final picked =
-        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final picked = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
     setState(() {
       if (isStart) {
         _start = picked;
@@ -169,7 +177,8 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
 
     switch (result) {
       case CloseSucceeded(:final queued):
-        await ref.read(orderDetailControllerProvider(widget.orderKey).notifier)
+        await ref
+            .read(orderDetailControllerProvider(widget.orderKey).notifier)
             .refresh();
         if (!mounted) return;
         Navigator.of(context).pop(
@@ -178,16 +187,18 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
               : 'Job closed. Downtime and root cause captured.',
         );
       case CloseAlreadyClosed():
-        await ref.read(orderDetailControllerProvider(widget.orderKey).notifier)
+        await ref
+            .read(orderDetailControllerProvider(widget.orderKey).notifier)
             .refresh();
         if (!mounted) return;
-        Navigator.of(context)
-            .pop('This job was already closed, most likely by an earlier sync.');
+        Navigator.of(
+          context,
+        ).pop('This job was already closed, most likely by an earlier sync.');
       case CloseRejected(
-          :final needsRootCause,
-          :final needsChecklist,
-          :final message,
-        ):
+        :final needsRootCause,
+        :final needsChecklist,
+        :final message,
+      ):
         setState(() {
           _submitting = false;
           if (needsRootCause) {
@@ -201,8 +212,8 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
           _message = needsRootCause
               ? 'Choose why it went wrong before closing this job.'
               : needsChecklist
-                  ? 'Complete at least one checklist task before closing.'
-                  : message;
+              ? 'Complete at least one checklist task before closing.'
+              : message;
         });
       case CloseFailed(:final message):
         setState(() {
@@ -220,245 +231,254 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
         : ref.watch(downtimeHistoryProvider(assetId));
     history.whenData(_applyWindows);
 
-    return SafeArea(
-      top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AppText.titleMedium(
-                        'Close ${widget.record.type.label.toLowerCase()}',
-                        weight: FontWeight.w800,
-                      ),
-                      const SizedBox(height: 2),
-                      AppText.bodySmall(
-                        'Record how long the asset was down, and why it went '
-                        'wrong if this is Critical or High priority.',
-                        color: FeColors.ink2,
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed:
-                      _submitting ? null : () => Navigator.of(context).pop(),
-                  icon: const Icon(LucideIcons.x, size: 20),
-                ),
-              ],
-            ),
-          ),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Column(
+    // The modal route caps this sheet at a fixed fraction of the screen and
+    // never accounts for the keyboard — without this padding the keyboard
+    // just overlaps the sheet's bottom edge, hiding the Notes field and the
+    // Cancel/Confirm buttons below it, neither of which can scroll into view
+    // on their own (mirrors order_chat_sheet.dart's composer).
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_message != null) ...[
-                    _CloseBanner(
-                      message: _message!,
-                      onDismiss: () => setState(() => _message = null),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  AppText.titleSmall(
-                    '1. How long it was down',
-                    weight: FontWeight.w700,
-                  ),
-                  const SizedBox(height: 4),
-                  AppText.bodySmall(
-                    'Downtime is the window the asset could not do its job — '
-                    'not how long the repair took.',
-                    color: FeColors.ink2,
-                  ),
-                  const SizedBox(height: 12),
-                  if (assetId == null)
-                    const _CloseNote(
-                      icon: LucideIcons.info,
-                      text: 'No asset is linked to this record, so there is no '
-                          'downtime to record.',
-                    )
-                  else if (history.isLoading)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(
-                        child: SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppText.titleMedium(
+                          'Close ${widget.record.type.label.toLowerCase()}',
+                          weight: FontWeight.w800,
                         ),
-                      ),
-                    )
-                  else ...[
-                    if (_openWindow != null)
-                      _CloseNote(
-                        icon: LucideIcons.timerReset,
-                        text: 'Downtime has been running on this record since '
-                            '${formatDateTimeShort(_openWindow!.startedAt)}. '
-                            'Closing it with the end time below.',
-                      )
-                    else if (_otherOpenWindow != null)
-                      _CloseNote(
-                        icon: LucideIcons.triangleAlert,
-                        tone: FeColors.warning,
-                        text:
-                            '${_otherOpenWindow!.reference ?? 'Another record'} '
-                            'has this asset marked down since '
-                            '${formatDateTimeShort(_otherOpenWindow!.startedAt)}. '
-                            'That is recorded separately — you can still record '
-                            'downtime here.',
-                      )
-                    else if (_predicted)
-                      const _CloseNote(
-                        icon: LucideIcons.timerReset,
-                        text: 'Predicted from your checklist times — down since '
-                            'the first task was started, running again as of '
-                            'now. Edit below if that is wrong.',
-                      ),
-                    if (_openWindow == null && !_predicted)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: _applyPredicted,
-                          icon: const Icon(LucideIcons.timerReset, size: 14),
-                          label: const AppText('Reset to predicted'),
+                        const SizedBox(height: 2),
+                        AppText.bodySmall(
+                          'Record how long the asset was down, and why it went '
+                          'wrong if this is Critical or High priority.',
+                          color: FeColors.ink2,
                         ),
-                      ),
-                    const SizedBox(height: 12),
-                    _DateTimeField(
-                      label: 'Down since',
-                      value: _start,
-                      // A running window's start is recorded fact.
-                      onTap: _openWindow != null || _submitting
-                          ? null
-                          : () => _pick(isStart: true),
-                    ),
-                    const SizedBox(height: 12),
-                    _DateTimeField(
-                      label: 'Running again',
-                      value: _end,
-                      onTap:
-                          _submitting ? null : () => _pick(isStart: false),
-                    ),
-                    const SizedBox(height: 12),
-                    AppText.labelMedium(
-                      'Impact',
-                      color: FeColors.ink2,
-                    ),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<DowntimeImpact>(
-                      initialValue: _impact,
-                      isExpanded: true,
-                      items: [
-                        for (final option in DowntimeImpact.values)
-                          DropdownMenuItem(
-                            value: option,
-                            child: AppText(
-                              option.label,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
                       ],
-                      onChanged: _submitting
-                          ? null
-                          : (value) => setState(
-                                () => _impact = value ?? _impact,
-                              ),
                     ),
-                  ],
-                  if (_rcaVisible) ...[
-                    const SizedBox(height: 24),
-                    AppText.titleSmall(
-                      '2. Why it went wrong',
-                      weight: FontWeight.w700,
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _rootCause,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: 'Root cause',
-                        errorText: _rootCauseError,
-                        // The default single line clipped this to "…at …",
-                        // which told the technician nothing.
-                        errorMaxLines: 3,
-                      ),
-                      items: [
-                        for (final option in kRootCauseOptions)
-                          DropdownMenuItem(
-                            value: option,
-                            child: AppText(humanizeRootCause(option)),
-                          ),
-                      ],
-                      onChanged: _submitting
-                          ? null
-                          : (value) => setState(() {
-                                _rootCause = value;
-                                _rootCauseError = null;
-                              }),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _notesController,
-                      enabled: !_submitting,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes',
-                        hintText: 'What actually happened — the story a '
-                            'dropdown cannot hold.',
-                      ),
-                    ),
-                  ],
+                  ),
+                  IconButton(
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    icon: const Icon(LucideIcons.x, size: 20),
+                  ),
                 ],
               ),
             ),
-          ),
-          const Divider(height: 1, color: FeColors.line),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        _submitting ? null : () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_message != null) ...[
+                      _CloseBanner(
+                        message: _message!,
+                        onDismiss: () => setState(() => _message = null),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    AppText.titleSmall(
+                      '1. How long it was down',
+                      weight: FontWeight.w700,
                     ),
-                    child: const AppText('Cancel'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _submitting ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      backgroundColor: FeColors.success,
+                    const SizedBox(height: 4),
+                    AppText.bodySmall(
+                      'Downtime is the window the asset could not do its job — '
+                      'not how long the repair took.',
+                      color: FeColors.ink2,
                     ),
-                    child: _submitting
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                    const SizedBox(height: 12),
+                    if (assetId == null)
+                      const _CloseNote(
+                        icon: LucideIcons.info,
+                        text:
+                            'No asset is linked to this record, so there is no '
+                            'downtime to record.',
+                      )
+                    else if (history.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    else ...[
+                      if (_openWindow != null)
+                        _CloseNote(
+                          icon: LucideIcons.timerReset,
+                          text:
+                              'Downtime has been running on this record since '
+                              '${formatDateTimeShort(_openWindow!.startedAt)}. '
+                              'Closing it with the end time below.',
+                        )
+                      else if (_otherOpenWindow != null)
+                        _CloseNote(
+                          icon: LucideIcons.triangleAlert,
+                          tone: FeColors.warning,
+                          text:
+                              '${_otherOpenWindow!.reference ?? 'Another record'} '
+                              'has this asset marked down since '
+                              '${formatDateTimeShort(_otherOpenWindow!.startedAt)}. '
+                              'That is recorded separately — you can still record '
+                              'downtime here.',
+                        )
+                      else if (_predicted)
+                        const _CloseNote(
+                          icon: LucideIcons.timerReset,
+                          text:
+                              'Predicted from your checklist times — down since '
+                              'the first task was started, running again as of '
+                              'now. Edit below if that is wrong.',
+                        ),
+                      if (_openWindow == null && !_predicted)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: _applyPredicted,
+                            icon: const Icon(LucideIcons.timerReset, size: 14),
+                            label: const AppText('Reset to predicted'),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      _DateTimeField(
+                        label: 'Down since',
+                        value: _start,
+                        // A running window's start is recorded fact.
+                        onTap: _openWindow != null || _submitting
+                            ? null
+                            : () => _pick(isStart: true),
+                      ),
+                      const SizedBox(height: 12),
+                      _DateTimeField(
+                        label: 'Running again',
+                        value: _end,
+                        onTap: _submitting ? null : () => _pick(isStart: false),
+                      ),
+                      const SizedBox(height: 12),
+                      AppText.labelMedium('Impact', color: FeColors.ink2),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<DowntimeImpact>(
+                        initialValue: _impact,
+                        isExpanded: true,
+                        items: [
+                          for (final option in DowntimeImpact.values)
+                            DropdownMenuItem(
+                              value: option,
+                              child: AppText(
+                                option.label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          )
-                        : const AppText('Confirm & close'),
-                  ),
+                        ],
+                        onChanged: _submitting
+                            ? null
+                            : (value) =>
+                                  setState(() => _impact = value ?? _impact),
+                      ),
+                    ],
+                    if (_rcaVisible) ...[
+                      const SizedBox(height: 24),
+                      AppText.titleSmall(
+                        '2. Why it went wrong',
+                        weight: FontWeight.w700,
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _rootCause,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Root cause',
+                          errorText: _rootCauseError,
+                          // The default single line clipped this to "…at …",
+                          // which told the technician nothing.
+                          errorMaxLines: 3,
+                        ),
+                        items: [
+                          for (final option in kRootCauseOptions)
+                            DropdownMenuItem(
+                              value: option,
+                              child: AppText(humanizeRootCause(option)),
+                            ),
+                        ],
+                        onChanged: _submitting
+                            ? null
+                            : (value) => setState(() {
+                                _rootCause = value;
+                                _rootCauseError = null;
+                              }),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _notesController,
+                        enabled: !_submitting,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Notes',
+                          hintText:
+                              'What actually happened — the story a '
+                              'dropdown cannot hold.',
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+            const Divider(height: 1, color: FeColors.line),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      child: const AppText('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _submitting ? null : _submit,
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: FeColors.success,
+                      ),
+                      child: _submitting
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const AppText('Confirm & close'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -484,10 +504,7 @@ class _DateTimeField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppText.labelMedium(
-          label,
-          color: FeColors.ink2,
-        ),
+        AppText.labelMedium(label, color: FeColors.ink2),
         const SizedBox(height: 6),
         InkWell(
           onTap: onTap,
@@ -535,31 +552,28 @@ class _CloseNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: tone == FeColors.warning ? FeColors.warningSoft : FeColors.infoSoft,
-          borderRadius: BorderRadius.circular(context.radii.md),
-          border: Border.all(
-            color: tone == FeColors.warning
-                ? FeColors.warningSoft
-                : FeColors.infoSoft,
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 16, color: tone),
-            const SizedBox(width: 10),
-            Expanded(
-              child: AppText.bodySmall(
-                text,
-                color: FeColors.ink2,
-              ),
-            ),
-          ],
-        ),
-      );
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: tone == FeColors.warning
+          ? FeColors.warningSoft
+          : FeColors.infoSoft,
+      borderRadius: BorderRadius.circular(context.radii.md),
+      border: Border.all(
+        color: tone == FeColors.warning
+            ? FeColors.warningSoft
+            : FeColors.infoSoft,
+      ),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: tone),
+        const SizedBox(width: 10),
+        Expanded(child: AppText.bodySmall(text, color: FeColors.ink2)),
+      ],
+    ),
+  );
 }
 
 /// Refusals show here rather than in a SnackBar: the messenger belongs to the
@@ -572,30 +586,24 @@ class _CloseBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-        decoration: BoxDecoration(
-          color: FeColors.dangerSoft,
-          borderRadius: BorderRadius.circular(context.radii.md),
-          border: Border.all(color: FeColors.dangerSoft),
+    padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+    decoration: BoxDecoration(
+      color: FeColors.dangerSoft,
+      borderRadius: BorderRadius.circular(context.radii.md),
+      border: Border.all(color: FeColors.dangerSoft),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(LucideIcons.triangleAlert, size: 16, color: FeColors.danger),
+        const SizedBox(width: 10),
+        Expanded(child: AppText.bodySmall(message, color: FeColors.danger)),
+        IconButton(
+          onPressed: onDismiss,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(LucideIcons.x, size: 14, color: FeColors.danger),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(LucideIcons.triangleAlert,
-                size: 16, color: FeColors.danger),
-            const SizedBox(width: 10),
-            Expanded(
-              child: AppText.bodySmall(
-                message,
-                color: FeColors.danger,
-              ),
-            ),
-            IconButton(
-              onPressed: onDismiss,
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(LucideIcons.x, size: 14, color: FeColors.danger),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }

@@ -138,15 +138,24 @@ class _AssignmentCard extends ConsumerStatefulWidget {
 
 class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
   bool _responding = false;
+  bool _accepting = false;
 
   Future<void> _respond({required bool accept, String? reason}) async {
-    setState(() => _responding = true);
+    // Captured before the await: a successful respond() refreshes the invite
+    // list and drops this record, unmounting this card mid-flight. The
+    // ScaffoldMessenger is tied to the screen's Scaffold, not this card, so
+    // it stays valid — grabbing it now is what lets the confirmation still
+    // show after this widget is gone.
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _responding = true;
+      _accepting = accept;
+    });
     final message = await ref
         .read(invitesControllerProvider.notifier)
         .respond(widget.record, accept: accept, reason: reason);
-    if (!mounted) return;
-    setState(() => _responding = false);
-    ScaffoldMessenger.of(context).showSnackBar(
+    if (mounted) setState(() => _responding = false);
+    messenger.showSnackBar(
       SnackBar(
         content: Text(
           message ??
@@ -327,25 +336,36 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         alignment: Alignment.center,
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              LucideIcons.check,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Accept',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                        child: _responding && _accepting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    LucideIcons.check,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Accept',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ),
@@ -368,25 +388,36 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: const Color(0xFFFCA5A5)),
                         ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              LucideIcons.x,
-                              color: Color(0xFFEF4444),
-                              size: 18,
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Decline',
-                              style: TextStyle(
-                                color: Color(0xFFEF4444),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                        child: _responding && !_accepting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    Color(0xFFEF4444),
+                                  ),
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    LucideIcons.x,
+                                    color: Color(0xFFEF4444),
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Decline',
+                                    style: TextStyle(
+                                      color: Color(0xFFEF4444),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ),

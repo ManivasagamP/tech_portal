@@ -41,4 +41,16 @@ class NotificationsRepository {
       _api.post('/api/notifications/mark-read/$id');
 
   Future<void> markAllRead() => _api.post('/api/notifications/mark-read/all');
+
+  /// Hands the device's FCM (Firebase Cloud Messaging) token to the server so
+  /// it can push to this device. Called on login and on token refresh.
+  Future<void> registerDevice({required String token, required String platform}) =>
+      _api.post('/api/notifications/register-device', data: {
+        'token': token,
+        'platform': platform,
+      });
+
+  /// Best-effort on logout — stops pushes reaching a device no longer signed in.
+  Future<void> unregisterDevice(String token) =>
+      _api.post('/api/notifications/unregister-device', data: {'token': token});
 }

@@ -58,21 +58,19 @@ class PhotoCapture {
   /// camera is the equivalent that works across Android and iOS without
   /// shipping a preview surface of our own.
   Future<CapturedPhoto?> takeFacePhoto() => _take(
-        source: ImageSource.camera,
-        camera: CameraDevice.front,
-        fallbackName: 'face-capture.jpg',
-      );
+    source: ImageSource.camera,
+    camera: CameraDevice.front,
+    fallbackName: 'face-capture.jpg',
+  );
 
   Future<CapturedPhoto?> takeJobPhoto() => _take(
-        source: ImageSource.camera,
-        camera: CameraDevice.rear,
-        fallbackName: 'photo.jpg',
-      );
+    source: ImageSource.camera,
+    camera: CameraDevice.rear,
+    fallbackName: 'photo.jpg',
+  );
 
-  Future<CapturedPhoto?> pickFromGallery() => _take(
-        source: ImageSource.gallery,
-        fallbackName: 'attachment.jpg',
-      );
+  Future<CapturedPhoto?> pickFromGallery() =>
+      _take(source: ImageSource.gallery, fallbackName: 'attachment.jpg');
 
   Future<CapturedPhoto?> _take({
     required ImageSource source,
@@ -121,9 +119,7 @@ class LocationCapture {
     }
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
-      throw const CaptureFailure(
-        'Please enable location access to proceed.',
-      );
+      throw const CaptureFailure('Please enable location access to proceed.');
     }
 
     final position = await Geolocator.getCurrentPosition(
@@ -144,7 +140,8 @@ class LocationCapture {
       final places = await _geocoding
           .placemarkFromCoordinates(lat, lng)
           .timeout(const Duration(seconds: 5));
-      if (places.isEmpty) return CapturedLocation(latitude: lat, longitude: lng);
+      if (places.isEmpty)
+        return CapturedLocation(latitude: lat, longitude: lng);
 
       final place = places.first;
       final city = _firstNamed([
@@ -192,7 +189,7 @@ class VoiceRecording {
 
 class VoiceCapture {
   VoiceCapture([AudioRecorder? recorder])
-      : _recorder = recorder ?? AudioRecorder();
+    : _recorder = recorder ?? AudioRecorder();
 
   /// The web caps a recording at three minutes; the same cap keeps a stray
   /// running recorder from producing an unsendable file.
@@ -204,14 +201,20 @@ class VoiceCapture {
 
   bool get isRecording => _startedAt != null;
 
+  /// Live mic level while recording, for a waveform display. Only emits
+  /// between [start] and [stop]/[cancel] — the underlying recorder has
+  /// nothing to report outside that window.
+  Stream<Amplitude> amplitudeStream({
+    Duration interval = const Duration(milliseconds: 100),
+  }) => _recorder.onAmplitudeChanged(interval);
+
   Future<void> start(String directory) async {
     if (!await _recorder.hasPermission()) {
       throw const CaptureFailure(
         'Microphone access is needed to record a voice note.',
       );
     }
-    final path =
-        '$directory/note-${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final path = '$directory/note-${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _recorder.start(const RecordConfig(), path: path);
     _path = path;
     _startedAt = DateTime.now();

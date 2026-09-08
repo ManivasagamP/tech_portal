@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../core/capture/capture_services.dart';
 import '../../core/utils/dates.dart';
@@ -15,6 +16,7 @@ import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 import '../../widgets/photo_viewer.dart';
 import '../../widgets/voice_note_player.dart';
+import '../../widgets/voice_waveform.dart';
 import 'verification_sheet.dart';
 
 /// Everything a technician does to one task: run its timer, tick it off, add
@@ -41,6 +43,7 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
   final _noteController = TextEditingController();
   final _voice = VoiceCapture();
   bool _recording = false;
+  Stream<Amplitude>? _amplitudeStream;
 
   /// Shown inside the sheet. A SnackBar cannot be used here: the messenger
   /// belongs to the Scaffold underneath, so its message renders behind this
@@ -134,7 +137,10 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
     if (_recording) {
       final recording = await _voice.stop();
       if (!mounted) return;
-      setState(() => _recording = false);
+      setState(() {
+        _recording = false;
+        _amplitudeStream = null;
+      });
       if (recording == null) {
         _report(const ActionOutcome.failed('Nothing was recorded.'));
         return;
@@ -154,7 +160,10 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
       final directory = await getTemporaryDirectory();
       await _voice.start(directory.path);
       if (!mounted) return;
-      setState(() => _recording = true);
+      setState(() {
+        _recording = true;
+        _amplitudeStream = _voice.amplitudeStream();
+      });
     } on CaptureFailure catch (e) {
       _report(ActionOutcome.failed(e.message));
     }
@@ -179,116 +188,126 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
     final item = state.items[widget.index];
     final busy = state.busyIndex == widget.index;
 
-    return SafeArea(
-      top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: AppText.titleMedium(
-                    item.title,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(LucideIcons.x, size: 20),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: busy || (item.isCompleted && !item.isRunning)
-                        ? null
-                        : () => _toggleTimer(item),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      backgroundColor: item.isRunning
-                          ? FeColors.danger
-                          : FeColors.primary,
-                    ),
-                    icon: Icon(
-                      item.isRunning ? LucideIcons.pause : LucideIcons.play,
-                      size: 16,
-                    ),
-                    label: AppText(
-                      item.isRunning
-                          ? 'Pause'
-                          : item.sessions.isEmpty
-                          ? 'Start Timer'
-                          : 'Start New Session',
+    // The modal route caps this sheet at a fixed fraction of the screen and
+    // never accounts for the keyboard itself — without this padding the
+    // keyboard just overlaps the sheet's bottom edge, hiding the note
+    // composer entirely instead of the Flexible list above it shrinking to
+    // make room (mirrors order_chat_sheet.dart's composer).
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: AppText.titleMedium(
+                      item.title,
+                      weight: FontWeight.w700,
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: busy
-                        ? null
-                        : () async =>
-                              _report(await _controller.toggle(widget.index)),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      backgroundColor: item.isCompleted
-                          ? FeColors.success
-                          : null,
-                      foregroundColor: item.isCompleted
-                          ? Colors.white
-                          : FeColors.ink2,
-                    ),
-                    child: AppText(
-                      item.isCompleted ? 'Mark Incomplete' : 'Mark Complete',
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(LucideIcons.x, size: 20),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: busy || (item.isCompleted && !item.isRunning)
+                          ? null
+                          : () => _toggleTimer(item),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: item.isRunning
+                            ? FeColors.danger
+                            : FeColors.primary,
+                      ),
+                      icon: Icon(
+                        item.isRunning ? LucideIcons.pause : LucideIcons.play,
+                        size: 16,
+                      ),
+                      label: AppText(
+                        item.isRunning
+                            ? 'Pause'
+                            : item.sessions.isEmpty
+                            ? 'Start Timer'
+                            : 'Start New Session',
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: busy
+                          ? null
+                          : () async =>
+                                _report(await _controller.toggle(widget.index)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: item.isCompleted
+                            ? FeColors.success
+                            : null,
+                        foregroundColor: item.isCompleted
+                            ? Colors.white
+                            : FeColors.ink2,
+                      ),
+                      child: AppText(
+                        item.isCompleted ? 'Mark Incomplete' : 'Mark Complete',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (busy) const LinearProgressIndicator(minHeight: 2),
-          if (_message != null)
-            _SheetMessage(
-              message: _message!,
-              onDismiss: () => setState(() {
-                _message = null;
-                _messageIsQueued = false;
-              }),
+            if (busy) const LinearProgressIndicator(minHeight: 2),
+            if (_message != null)
+              _SheetMessage(
+                message: _message!,
+                onDismiss: () => setState(() {
+                  _message = null;
+                  _messageIsQueued = false;
+                }),
+              ),
+            Flexible(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                children: [
+                  _TimeLog(item: item),
+                  const SizedBox(height: 16),
+                  _Notes(item: item),
+                  const SizedBox(height: 16),
+                  _Attachments(
+                    item: item,
+                    onAdd: () => _addPhoto(fromGallery: false),
+                    onPick: () => _addPhoto(fromGallery: true),
+                    onRemove: (url) async => _report(
+                      await _controller.removePhoto(widget.index, url),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          Flexible(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              children: [
-                _TimeLog(item: item),
-                const SizedBox(height: 16),
-                _Notes(item: item),
-                const SizedBox(height: 16),
-                _Attachments(
-                  item: item,
-                  onAdd: () => _addPhoto(fromGallery: false),
-                  onPick: () => _addPhoto(fromGallery: true),
-                  onRemove: (url) async =>
-                      _report(await _controller.removePhoto(widget.index, url)),
-                ),
-              ],
+            _NoteComposer(
+              controller: _noteController,
+              recording: _recording,
+              amplitudeStream: _amplitudeStream,
+              enabled: !busy,
+              onSend: _sendNote,
+              onToggleRecording: _toggleRecording,
             ),
-          ),
-          _NoteComposer(
-            controller: _noteController,
-            recording: _recording,
-            enabled: !busy,
-            onSend: _sendNote,
-            onToggleRecording: _toggleRecording,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -316,11 +335,7 @@ class _TimeLog extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(
-                LucideIcons.clock,
-                size: 16,
-                color: FeColors.primary,
-              ),
+              const Icon(LucideIcons.clock, size: 16, color: FeColors.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: AppText.titleSmall(
@@ -348,10 +363,7 @@ class _TimeLog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (sessions.isEmpty)
-            AppText.bodySmall(
-              'No sessions yet.',
-              color: FeColors.primary,
-            )
+            AppText.bodySmall('No sessions yet.', color: FeColors.primary)
           else
             for (var i = 0; i < sessions.length; i++)
               _SessionRow(session: sessions[i], number: sessions.length - i),
@@ -378,101 +390,102 @@ class _SessionRow extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         radius: context.radii.card,
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: FeColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(context.radii.sm),
-                ),
-                child: AppText(
-                  'SESSION $number',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontSize: 10,
-                    color: FeColors.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Verified in and verified out. `cameraOff` used to mark the
-              // end capture, which read as "no photo was taken" — the exact
-              // opposite of what its presence means.
-              if (session.faceCaptureUrl != null)
-                const Icon(
-                  LucideIcons.logIn,
-                  size: 12,
-                  color: FeColors.primary,
-                ),
-              if (session.endFaceCaptureUrl != null)
-                const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Icon(
-                    LucideIcons.logOut,
-                    size: 12,
-                    color: FeColors.primary,
-                  ),
-                ),
-              const Spacer(),
-              AppText.caption(
-                session.isRunning
-                    ? 'Running'
-                    : formatMinutesAsHours(session.timeSpent ?? 0),
-                color: session.isRunning
-                    ? FeColors.warning
-                    : FeColors.ink2,
-                weight: FontWeight.w700,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          AppText(
-            session.startTime == null
-                ? '—'
-                : '${formatSessionDate(session.startTime!)} '
-                      '${formatSessionTime(session.startTime!)}'
-                      '${session.endTime == null ? '' : ' → ${formatSessionTime(session.endTime!)}'}',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: FeColors.ink2,
-              fontFamily: 'monospace',
-            ),
-          ),
-          if (hasGeo) ...[
-            const SizedBox(height: 4),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
               children: [
-                const Icon(
-                  LucideIcons.mapPin,
-                  size: 11,
-                  color: FeColors.ink2,
-                ),
-                const SizedBox(width: 4),
-                // The place name where one was resolved, the coordinates
-                // otherwise — a technician reading their own history wants
-                // "where was I", and the numbers only answer that on a map.
-                Expanded(
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: FeColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(context.radii.sm),
+                  ),
                   child: AppText(
-                    session.placeLabel ??
-                        '${session.latitude!.toStringAsFixed(4)}, '
-                            '${session.longitude!.toStringAsFixed(4)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    'SESSION $number',
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontSize: 10,
-                      color: FeColors.ink2,
-                      fontFamily: session.placeLabel == null
-                          ? 'monospace'
-                          : null,
+                      color: FeColors.primary,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                // Verified in and verified out. `cameraOff` used to mark the
+                // end capture, which read as "no photo was taken" — the exact
+                // opposite of what its presence means.
+                if (session.faceCaptureUrl != null)
+                  const Icon(
+                    LucideIcons.logIn,
+                    size: 12,
+                    color: FeColors.primary,
+                  ),
+                if (session.endFaceCaptureUrl != null)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4),
+                    child: Icon(
+                      LucideIcons.logOut,
+                      size: 12,
+                      color: FeColors.primary,
+                    ),
+                  ),
+                const Spacer(),
+                AppText.caption(
+                  session.isRunning
+                      ? 'Running'
+                      : formatMinutesAsHours(session.timeSpent ?? 0),
+                  color: session.isRunning ? FeColors.warning : FeColors.ink2,
+                  weight: FontWeight.w700,
+                ),
               ],
             ),
+            const SizedBox(height: 8),
+            AppText(
+              session.startTime == null
+                  ? '—'
+                  : '${formatSessionDate(session.startTime!)} '
+                        '${formatSessionTime(session.startTime!)}'
+                        '${session.endTime == null ? '' : ' → ${formatSessionTime(session.endTime!)}'}',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: FeColors.ink2,
+                fontFamily: 'monospace',
+              ),
+            ),
+            if (hasGeo) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(
+                    LucideIcons.mapPin,
+                    size: 11,
+                    color: FeColors.ink2,
+                  ),
+                  const SizedBox(width: 4),
+                  // The place name where one was resolved, the coordinates
+                  // otherwise — a technician reading their own history wants
+                  // "where was I", and the numbers only answer that on a map.
+                  Expanded(
+                    child: AppText(
+                      session.placeLabel ??
+                          '${session.latitude!.toStringAsFixed(4)}, '
+                              '${session.longitude!.toStringAsFixed(4)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 10,
+                        color: FeColors.ink2,
+                        fontFamily: session.placeLabel == null
+                            ? 'monospace'
+                            : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
         ),
       ),
     );
@@ -502,18 +515,12 @@ class _Notes extends StatelessWidget {
               color: FeColors.ink2,
             ),
             const SizedBox(width: 8),
-            AppText.titleSmall(
-              'Notes',
-              weight: FontWeight.w700,
-            ),
+            AppText.titleSmall('Notes', weight: FontWeight.w700),
           ],
         ),
         const SizedBox(height: 8),
         if (notes.isEmpty)
-          AppText.bodySmall(
-            'No notes yet.',
-            color: FeColors.ink2,
-          )
+          AppText.bodySmall('No notes yet.', color: FeColors.ink2)
         else
           for (final note in notes)
             Padding(
@@ -525,8 +532,7 @@ class _Notes extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (note.text.isNotEmpty)
-                      AppText.bodySmall(note.text),
+                    if (note.text.isNotEmpty) AppText.bodySmall(note.text),
                     if (note.audioUrl != null) ...[
                       if (note.text.isNotEmpty) const SizedBox(height: 8),
                       VoiceNotePlayer(
@@ -570,17 +576,10 @@ class _Attachments extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Icon(
-              LucideIcons.paperclip,
-              size: 16,
-              color: FeColors.ink2,
-            ),
+            const Icon(LucideIcons.paperclip, size: 16, color: FeColors.ink2),
             const SizedBox(width: 8),
             Expanded(
-              child: AppText.titleSmall(
-                'Photos',
-                weight: FontWeight.w700,
-              ),
+              child: AppText.titleSmall('Photos', weight: FontWeight.w700),
             ),
             IconButton(
               onPressed: onPick,
@@ -596,10 +595,7 @@ class _Attachments extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         if (item.attachments.isEmpty)
-          AppText.bodySmall(
-            'No photos attached.',
-            color: FeColors.ink2,
-          )
+          AppText.bodySmall('No photos attached.', color: FeColors.ink2)
         else
           Wrap(
             spacing: 8,
@@ -707,11 +703,7 @@ class _AttachmentTile extends StatelessWidget {
                   color: Colors.black,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  LucideIcons.x,
-                  size: 12,
-                  color: Colors.white,
-                ),
+                child: const Icon(LucideIcons.x, size: 12, color: Colors.white),
               ),
             ),
           ),
@@ -725,6 +717,7 @@ class _NoteComposer extends StatelessWidget {
   const _NoteComposer({
     required this.controller,
     required this.recording,
+    required this.amplitudeStream,
     required this.enabled,
     required this.onSend,
     required this.onToggleRecording,
@@ -732,6 +725,7 @@ class _NoteComposer extends StatelessWidget {
 
   final TextEditingController controller;
   final bool recording;
+  final Stream<Amplitude>? amplitudeStream;
   final bool enabled;
   final VoidCallback onSend;
   final VoidCallback onToggleRecording;
@@ -746,18 +740,21 @@ class _NoteComposer extends StatelessWidget {
     child: Row(
       children: [
         Expanded(
-          child: TextField(
-            controller: controller,
-            enabled: enabled && !recording,
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => onSend(),
-            decoration: InputDecoration(
-              hintText: recording
-                  ? 'Recording… tap the mic to stop'
-                  : 'Add a note',
-              isDense: true,
-            ),
-          ),
+          child: recording && amplitudeStream != null
+              ? VoiceWaveform(
+                  amplitudeStream: amplitudeStream!,
+                  color: FeColors.primary,
+                )
+              : TextField(
+                  controller: controller,
+                  enabled: enabled && !recording,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => onSend(),
+                  decoration: const InputDecoration(
+                    hintText: 'Add a note',
+                    isDense: true,
+                  ),
+                ),
         ),
         const SizedBox(width: 8),
         IconButton(
@@ -803,12 +800,7 @@ class _SheetMessage extends StatelessWidget {
         children: [
           Icon(LucideIcons.info, size: 16, color: FeColors.warning),
           const SizedBox(width: 8),
-          Expanded(
-            child: AppText.bodySmall(
-              message,
-              color: FeColors.warning,
-            ),
-          ),
+          Expanded(child: AppText.bodySmall(message, color: FeColors.warning)),
           GestureDetector(
             onTap: onDismiss,
             child: Icon(LucideIcons.x, size: 14, color: FeColors.warning),

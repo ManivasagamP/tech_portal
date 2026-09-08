@@ -50,6 +50,9 @@ dependencies:
   url_launcher: ^6.3.2
   webview_flutter: ^4.14.1
   flutter_markdown_plus: ^1.0.12
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.6.0
+  flutter_local_notifications: ^22.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

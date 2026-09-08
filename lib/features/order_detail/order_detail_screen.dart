@@ -11,12 +11,12 @@ import '../../core/utils/dates.dart';
 import '../../domain/maintenance_record.dart';
 import '../../state/auth_controller.dart';
 import '../../state/order_detail_controller.dart';
-import '../../theme/fe_colors.dart';
+// import '../../theme/fe_colors.dart'; // only used by the hidden voice note sheet below
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
 import 'checklist_tab.dart';
 import 'detail_widgets.dart';
-import 'record_voice_note.dart';
+// import 'record_voice_note.dart'; // only used by the hidden voice note sheet below
 import 'history_tab.dart';
 import 'order_chat_sheet.dart';
 
@@ -52,8 +52,10 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
-  late final OrderKey _key =
-      (type: OrderType.fromSlug(widget.orderType), id: widget.orderId);
+  late final OrderKey _key = (
+    type: OrderType.fromSlug(widget.orderType),
+    id: widget.orderId,
+  );
 
   @override
   void initState() {
@@ -78,7 +80,11 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
-            icon: const Icon(LucideIcons.arrowLeft, color: Color(0xFF0F172A), size: 22),
+            icon: const Icon(
+              LucideIcons.arrowLeft,
+              color: Color(0xFF0F172A),
+              size: 22,
+            ),
             tooltip: 'Back',
             onPressed: () => context.pop(),
           ),
@@ -150,39 +156,39 @@ class _DetailTabBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        color: const Color(0xFFF8FAFC),
-        padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-        child: Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: TabBar(
-            dividerColor: Colors.transparent,
-            indicatorSize: TabBarIndicatorSize.tab,
-            indicator: BoxDecoration(
-              color: const Color(0xFF0284C7),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            labelColor: Colors.white,
-            unselectedLabelColor: const Color(0xFF64748B),
-            labelStyle: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-            ),
-            unselectedLabelStyle: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w500,
-            ),
-            tabs: [
-              const Tab(text: 'Details'),
-              Tab(text: tasksLabel),
-              const Tab(text: 'History'),
-            ],
-          ),
+    color: const Color(0xFFF8FAFC),
+    padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+    child: Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: TabBar(
+        dividerColor: Colors.transparent,
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicator: BoxDecoration(
+          color: const Color(0xFF0284C7),
+          borderRadius: BorderRadius.circular(12),
         ),
-      );
+        labelColor: Colors.white,
+        unselectedLabelColor: const Color(0xFF64748B),
+        labelStyle: const TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w700,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+        ),
+        tabs: [
+          const Tab(text: 'Details'),
+          Tab(text: tasksLabel),
+          const Tab(text: 'History'),
+        ],
+      ),
+    ),
+  );
 }
 
 class _DetailsTab extends ConsumerWidget {
@@ -212,39 +218,40 @@ class _DetailsTab extends ConsumerWidget {
     OrderType.annual: Color(0xFFFEF3C7),
   };
 
-  void _showVoiceNoteSheet(BuildContext context, String? audioUrl) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: FeColors.panel,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Record Voice Note',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 14),
-              RecordVoiceNote(
-                orderKey: orderKey,
-                audioUrl: audioUrl,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // Record voice note — hidden for now, along with its call site above.
+  // void _showVoiceNoteSheet(BuildContext context, String? audioUrl) {
+  //   showModalBottomSheet<void>(
+  //     context: context,
+  //     backgroundColor: FeColors.panel,
+  //     shape: const RoundedRectangleBorder(
+  //       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  //     ),
+  //     builder: (context) => SafeArea(
+  //       child: Padding(
+  //         padding: const EdgeInsets.all(20),
+  //         child: Column(
+  //           mainAxisSize: MainAxisSize.min,
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             const Text(
+  //               'Record Voice Note',
+  //               style: TextStyle(
+  //                 fontSize: 18,
+  //                 fontWeight: FontWeight.w800,
+  //                 color: Color(0xFF0F172A),
+  //               ),
+  //             ),
+  //             const SizedBox(height: 14),
+  //             RecordVoiceNote(
+  //               orderKey: orderKey,
+  //               audioUrl: audioUrl,
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -303,8 +310,7 @@ class _DetailsTab extends ConsumerWidget {
                       ),
                       child: Icon(iconData, size: 22, color: iconColor),
                     ),
-                    if (record.priority != null &&
-                        record.priority!.isNotEmpty)
+                    if (record.priority != null && record.priority!.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
@@ -361,14 +367,15 @@ class _DetailsTab extends ConsumerWidget {
                         },
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ActionPillButton(
-                        icon: LucideIcons.mic,
-                        label: 'Record voice note',
-                        onTap: () => _showVoiceNoteSheet(context, record.notesAudioUrl),
-                      ),
-                    ),
+                    // Record voice note — hidden for now.
+                    // const SizedBox(width: 12),
+                    // Expanded(
+                    //   child: _ActionPillButton(
+                    //     icon: LucideIcons.mic,
+                    //     label: 'Record voice note',
+                    //     onTap: () => _showVoiceNoteSheet(context, record.notesAudioUrl),
+                    //   ),
+                    // ),
                   ],
                 ),
               ],
@@ -418,7 +425,9 @@ class _DetailsTab extends ConsumerWidget {
                 _MetaItemRow(
                   icon: LucideIcons.mapPin,
                   label: 'Location',
-                  value: record.location ?? 'Fusion Eco Tower A - Ground Floor - Main Reception',
+                  value:
+                      record.location ??
+                      'Fusion Eco Tower A - Ground Floor - Main Reception',
                 ),
                 const Divider(height: 28, color: Color(0xFFF1F5F9)),
                 _MetaItemRow(
@@ -430,7 +439,8 @@ class _DetailsTab extends ConsumerWidget {
                 _MetaItemRow(
                   icon: LucideIcons.user,
                   label: 'Assigned To',
-                  value: record.technicianName != null &&
+                  value:
+                      record.technicianName != null &&
                           record.technicianName!.isNotEmpty
                       ? record.technicianName!
                       : 'Balaji',

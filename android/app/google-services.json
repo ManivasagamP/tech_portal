@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "552357954709",
+    "project_id": "fusion-eco-technician",
+    "storage_bucket": "fusion-eco-technician.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:552357954709:android:abb02bdc8887bceb5d879c",
+        "android_client_info": {
+          "package_name": "com.thefusionapps.fusioneco.technician"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCYiY5d6Qbbgs0kU70NQQFxEuRuXbNSxys"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
