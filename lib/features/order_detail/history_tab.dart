@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -22,20 +23,21 @@ class HistoryTab extends ConsumerWidget {
 
     return history.when(
       loading: () => const TechSpinner(),
-      error: (error, _) => const Padding(
-        padding: EdgeInsets.all(16),
+      error: (error, _) => Padding(
+        padding: const EdgeInsets.all(16),
         child: TechEmptyState(
           icon: LucideIcons.triangleAlert,
-          title: 'Failed to load history',
+          title: 'order_detail.history_load_failed'.getString(context),
         ),
       ),
       data: (entries) => entries.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(16),
+          ? Padding(
+              padding: const EdgeInsets.all(16),
               child: TechEmptyState(
                 icon: LucideIcons.history,
-                title: 'No history yet',
-                subtitle: 'Changes to this record will appear here.',
+                title: 'order_detail.history_empty_title'.getString(context),
+                subtitle:
+                    'order_detail.history_empty_subtitle'.getString(context),
               ),
             )
           : ListView.separated(

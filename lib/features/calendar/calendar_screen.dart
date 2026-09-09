@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -17,7 +18,16 @@ import '../../widgets/order_card.dart';
 class CalendarScreen extends ConsumerWidget {
   const CalendarScreen({super.key});
 
-  static const _weekdayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  /// Translation keys for the single-letter weekday header, Sunday first.
+  static const _weekdayLabelKeys = [
+    'calendar.weekday_short_sun',
+    'calendar.weekday_short_mon',
+    'calendar.weekday_short_tue',
+    'calendar.weekday_short_wed',
+    'calendar.weekday_short_thu',
+    'calendar.weekday_short_fri',
+    'calendar.weekday_short_sat',
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,7 +41,7 @@ class CalendarScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: FeColors.page,
-      appBar: const FeHeader(title: 'Calendar'),
+      appBar: FeHeader(title: 'common.calendar'.getString(context)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -62,10 +72,10 @@ class CalendarScreen extends ConsumerWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    for (final label in _weekdayLabels)
+                    for (final labelKey in _weekdayLabelKeys)
                       Expanded(
                         child: AppText.caption(
-                          label,
+                          labelKey.getString(context),
                           align: TextAlign.center,
                           color: FeColors.ink2,
                         ),
@@ -107,10 +117,10 @@ class CalendarScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           if (selectedRecords.isEmpty)
-            const TechEmptyState(
+            TechEmptyState(
               icon: LucideIcons.calendarDays,
-              title: 'Nothing scheduled',
-              subtitle: 'No work is due on this day.',
+              title: 'calendar.nothing_scheduled_title'.getString(context),
+              subtitle: 'calendar.nothing_scheduled_subtitle'.getString(context),
             )
           else
             for (final record in selectedRecords)

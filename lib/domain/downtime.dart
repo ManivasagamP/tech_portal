@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localization/flutter_localization.dart';
+
 import '../core/network/envelope.dart';
 
 /// How badly the asset was affected while it was down. The wire values are the
@@ -10,7 +13,17 @@ enum DowntimeImpact {
   const DowntimeImpact(this.wire, this.label);
 
   final String wire;
+
+  /// English fallback / non-UI identifier — see [displayLabel] for the
+  /// translated string to actually render in the downtime picker.
   final String label;
+
+  String displayLabel(BuildContext context) => switch (this) {
+        DowntimeImpact.fullOutage =>
+          'downtime.impact_full_outage'.getString(context),
+        DowntimeImpact.degraded => 'downtime.impact_degraded'.getString(context),
+        DowntimeImpact.noImpact => 'downtime.impact_no_impact'.getString(context),
+      };
 }
 
 /// The root causes the server's `model/root-cause.ts` accepts. The list is
@@ -32,6 +45,26 @@ String humanizeRootCause(String value) => value
     .split('_')
     .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
     .join(' ');
+
+/// Translated form of [humanizeRootCause] for the eight known
+/// [kRootCauseOptions] values — those humanize fine in English but don't
+/// mechanically translate, so each gets its own key. Anything outside that
+/// fixed list (shouldn't happen; the picker only offers these) falls back to
+/// the English humanization rather than showing a raw untranslated key.
+String displayRootCause(BuildContext context, String value) {
+  const keys = {
+    'wear': 'downtime.root_cause_wear',
+    'misuse': 'downtime.root_cause_misuse',
+    'installation_defect': 'downtime.root_cause_installation_defect',
+    'design_defect': 'downtime.root_cause_design_defect',
+    'missed_maintenance': 'downtime.root_cause_missed_maintenance',
+    'environmental': 'downtime.root_cause_environmental',
+    'power_quality': 'downtime.root_cause_power_quality',
+    'unknown': 'downtime.root_cause_unknown',
+  };
+  final key = keys[value];
+  return key != null ? key.getString(context) : humanizeRootCause(value);
+}
 
 /// The priorities the server's `rcaCloseGuard` demands a root cause for.
 /// Compared case-insensitively: reactive maintenance stores its priority

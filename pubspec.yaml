@@ -15,6 +15,9 @@ dependencies:
   flutter_riverpod: ^2.6.1
   go_router: ^14.6.2
 
+  # localization (JSON-based, not the SDK's flutter_localizations)
+  flutter_localization: ^0.4.1
+
   # network
   dio: ^5.7.0
   socket_io_client: ^2.0.3+1
@@ -40,6 +43,9 @@ dependencies:
   geocoding: ^5.0.0
   permission_handler: ^11.3.1
 
+  # digital signature sign-off (close flow, Volume "Digital signatures")
+  signature: ^6.4.0
+
   # utils
   uuid: ^4.5.1
   intl: ^0.20.1
@@ -60,3 +66,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/i18n/

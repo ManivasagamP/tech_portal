@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../state/orders_controller.dart';
@@ -7,6 +8,25 @@ import '../../theme/theme_extensions.dart';
 import '../../widgets/app_text.dart';
 
 const _priorityOptions = ['Critical', 'High', 'Medium', 'Low'];
+
+/// Maps a raw priority value (as stored on the filter/record, in English)
+/// to its translated display label. The underlying value must stay in
+/// English since it is compared against server data and shown as filter
+/// pill text elsewhere.
+String _priorityLabel(String option, BuildContext context) {
+  switch (option) {
+    case 'Critical':
+      return 'orders.priority_critical'.getString(context);
+    case 'High':
+      return 'orders.priority_high'.getString(context);
+    case 'Medium':
+      return 'orders.priority_medium'.getString(context);
+    case 'Low':
+      return 'orders.priority_low'.getString(context);
+    default:
+      return option;
+  }
+}
 
 /// Bottom sheet holding sort, timeframe, priority and status. Edits are local
 /// until Apply; Reset clears and closes in one step, as on the web.
@@ -43,7 +63,7 @@ class _FilterSheetState extends State<FilterSheet> {
               children: [
                 Expanded(
                   child: AppText.titleMedium(
-                    'Filters',
+                    'orders.filters'.getString(context),
                     weight: FontWeight.w600,
                   ),
                 ),
@@ -60,9 +80,12 @@ class _FilterSheetState extends State<FilterSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _SectionLabel('Sort Order'),
+                  _SectionLabel('orders.sort_order'.getString(context)),
                   _SegmentedRow(
-                    options: const ['Newest First', 'Oldest First'],
+                    options: [
+                      'orders.sort_newest'.getString(context),
+                      'orders.sort_oldest'.getString(context),
+                    ],
                     selectedIndex: _local.sortOrder == SortOrder.desc ? 0 : 1,
                     onSelected: (index) => setState(() {
                       _local = _local.copyWith(
@@ -71,9 +94,13 @@ class _FilterSheetState extends State<FilterSheet> {
                     }),
                   ),
                   const SizedBox(height: 24),
-                  const _SectionLabel('Timeframe'),
+                  _SectionLabel('orders.timeframe'.getString(context)),
                   _SegmentedRow(
-                    options: const ['All dates', 'Overdue', 'Due Today'],
+                    options: [
+                      'orders.all_dates'.getString(context),
+                      'orders.overdue'.getString(context),
+                      'orders.due_today'.getString(context),
+                    ],
                     fontSize: 10,
                     selectedIndex: DateFilter.values.indexOf(_local.dateFilter),
                     onSelected: (index) => setState(() {
@@ -83,10 +110,11 @@ class _FilterSheetState extends State<FilterSheet> {
                     }),
                   ),
                   const SizedBox(height: 24),
-                  const _SectionLabel('Priority Level'),
+                  _SectionLabel('orders.priority_level'.getString(context)),
                   _ToggleGrid(
                     options: _priorityOptions,
                     selected: _local.priority,
+                    labelBuilder: _priorityLabel,
                     onToggle: (value) => setState(() {
                       _local = _local.priority == value
                           ? _local.copyWith(clearPriority: true)
@@ -95,7 +123,7 @@ class _FilterSheetState extends State<FilterSheet> {
                   ),
                   if (widget.statusOptions.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    const _SectionLabel('Task Status'),
+                    _SectionLabel('orders.task_status'.getString(context)),
                     _ToggleGrid(
                       options: widget.statusOptions,
                       selected: _local.status,
@@ -122,14 +150,14 @@ class _FilterSheetState extends State<FilterSheet> {
                   child: OutlinedButton(
                     onPressed: () =>
                         Navigator.of(context).pop(const OrderFilters()),
-                    child: const AppText('Reset'),
+                    child: AppText('common.reset'.getString(context)),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(_local),
-                    child: const AppText('Apply Filters'),
+                    child: AppText('orders.apply_filters'.getString(context)),
                   ),
                 ),
               ],
@@ -225,12 +253,18 @@ class _ToggleGrid extends StatelessWidget {
     required this.selected,
     required this.onToggle,
     this.fontSize = 12,
+    this.labelBuilder,
   });
 
   final List<String> options;
   final String? selected;
   final ValueChanged<String> onToggle;
   final double fontSize;
+
+  /// Optional display-label override: the underlying [options] values stay
+  /// in English (they are compared against server data), but the visible
+  /// text can be translated through this.
+  final String Function(String option, BuildContext context)? labelBuilder;
 
   @override
   Widget build(BuildContext context) => Wrap(
@@ -259,7 +293,7 @@ class _ToggleGrid extends StatelessWidget {
                     ),
                   ),
                   child: AppText(
-                    option,
+                    labelBuilder == null ? option : labelBuilder!(option, context),
                     align: TextAlign.center,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           fontSize: fontSize,

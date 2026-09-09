@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -69,7 +70,7 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
     if (token == null || token.isEmpty || session == null) {
       setState(() {
         _loading = false;
-        _error = 'Sign in again to open the 3D view.';
+        _error = 'twin.sign_in_required'.getString(context);
       });
       return;
     }
@@ -85,7 +86,7 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
                 if (mounted) {
                   setState(() {
                     _loading = false;
-                    _error = 'The 3D view kept redirecting to another page.';
+                    _error = 'twin.redirect_loop'.getString(context);
                   });
                 }
                 return;
@@ -173,13 +174,13 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AppText.titleSmall(
-              widget.assetName ?? 'Asset Location',
+              widget.assetName ?? 'twin.asset_location_title'.getString(context),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               weight: FontWeight.w700,
             ),
             AppText(
-              '3D VIEW',
+              'twin.view_label'.getString(context),
               style: theme.textTheme.labelSmall?.copyWith(
                 color: FeColors.ink2,
                 letterSpacing: 1.5,
@@ -194,7 +195,7 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
               padding: const EdgeInsets.all(16),
               child: TechEmptyState(
                 icon: LucideIcons.box,
-                title: 'The 3D view would not open',
+                title: 'twin.load_error_title'.getString(context),
                 subtitle: _error,
               ),
             )

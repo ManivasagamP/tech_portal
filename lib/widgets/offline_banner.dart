@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -37,9 +38,19 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
         if (!offline && pending == 0) return const SizedBox.shrink();
 
         final text = offline
-            ? 'Offline — your work is saved on this device'
-                '${pending > 0 ? ' ($pending queued)' : ''}'
-            : '$pending change${pending == 1 ? '' : 's'} waiting to sync';
+            ? (pending > 0
+                ? context.formatString(
+                    'widgets.offline_message_with_queued'.getString(context),
+                    [pending],
+                  )
+                : 'widgets.offline_message'.getString(context))
+            : context.formatString(
+                (pending == 1
+                        ? 'widgets.pending_sync_one'
+                        : 'widgets.pending_sync_other')
+                    .getString(context),
+                [pending],
+              );
 
         return Container(
           width: double.infinity,
@@ -69,7 +80,11 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner> {
                     minimumSize: const Size(0, 28),
                     backgroundColor: FeColors.warningSoft,
                   ),
-                  child: AppText(_syncing ? 'Syncing…' : 'Sync now'),
+                  child: AppText(
+                    _syncing
+                        ? 'widgets.syncing_label'.getString(context)
+                        : 'widgets.sync_now'.getString(context),
+                  ),
                 ),
             ],
           ),

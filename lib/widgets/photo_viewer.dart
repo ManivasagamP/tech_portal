@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'app_text.dart';
@@ -61,7 +62,10 @@ class _PhotoViewerState extends State<_PhotoViewer> {
           titleWidget: widget.urls.length == 1
               ? const SizedBox.shrink()
               : AppText(
-                  '${_index + 1} of ${widget.urls.length}',
+                  context.formatString(
+                    'widgets.photo_counter'.getString(context),
+                    [_index + 1, widget.urls.length],
+                  ),
                   style: const TextStyle(fontSize: 14),
                 ),
         ),
@@ -94,7 +98,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
                       ),
                       const SizedBox(height: 12),
                       AppText(
-                        'This photo could not be loaded.',
+                        'widgets.photo_load_error'.getString(context),
                         style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                       ),
                     ],

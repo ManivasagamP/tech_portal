@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -86,7 +87,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         setState(() => _processing = false);
         if (isUrl) {
           await launchUrl(Uri.parse(value), mode: LaunchMode.externalApplication);
-          if (mounted) _toast('Opened in your browser.');
+          if (mounted) _toast('scanner.opened_in_browser'.getString(context));
         } else {
           // Not a link and not ours — show the text and let the person read it.
           _toast(value);
@@ -133,7 +134,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       if (raw == null) {
         if (mounted) {
           setState(() => _processing = false);
-          _toast('No QR code in that picture.');
+          _toast('scanner.no_qr_in_picture'.getString(context));
         }
         return;
       }
@@ -144,7 +145,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     } catch (error) {
       if (mounted) {
         setState(() => _processing = false);
-        _toast('That picture could not be read.');
+        _toast('scanner.picture_unreadable'.getString(context));
       }
     }
   }
@@ -198,11 +199,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 AppText.titleSmall(
-                  'Scanner',
+                  'scanner.title'.getString(context),
                   weight: FontWeight.w700,
                 ),
                 AppText.caption(
-                  _paused ? 'Paused' : 'Looking for a code',
+                  _paused
+                      ? 'scanner.paused'.getString(context)
+                      : 'scanner.looking_for_code'.getString(context),
                   color: FeColors.ink2,
                 ),
               ],
@@ -218,7 +221,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
               }
               final on = state.torchState == TorchState.on;
               return IconButton(
-                tooltip: on ? 'Torch off' : 'Torch on',
+                tooltip: on
+                    ? 'scanner.torch_off'.getString(context)
+                    : 'scanner.torch_on'.getString(context),
                 icon: Icon(
                   on ? LucideIcons.flashlight : LucideIcons.flashlightOff,
                   size: 18,
@@ -248,7 +253,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                           MobileScanner(
                             controller: _controller,
                             errorBuilder: (context, error) => _CameraError(
-                              message: _describe(error),
+                              message: _describe(context, error),
                             ),
                             onDetect: (capture) {
                               if (_paused || _processing || result != null) {
@@ -282,7 +287,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 )
               else
                 _OpenButton(
-                  label: 'Open ${result.label.toLowerCase()}',
+                  label: context.formatString(
+                    'scanner.open_result'.getString(context),
+                    [result.label.toLowerCase()],
+                  ),
                   onOpen: _openResult,
                   onDismiss: _resume,
                 ),
@@ -303,13 +311,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  static String _describe(MobileScannerException error) =>
+  static String _describe(BuildContext context, MobileScannerException error) =>
       switch (error.errorCode) {
         MobileScannerErrorCode.permissionDenied =>
-          'Camera access is off for this app. Turn it on in Settings to scan.',
+          'scanner.camera_permission_denied'.getString(context),
         MobileScannerErrorCode.unsupported =>
-          'This device cannot scan QR codes.',
-        _ => 'The camera could not be started.',
+          'scanner.camera_unsupported'.getString(context),
+        _ => 'scanner.camera_start_failed'.getString(context),
       };
 }
 
@@ -453,7 +461,11 @@ class _Controls extends StatelessWidget {
                 ),
                 icon: Icon(paused ? LucideIcons.play : LucideIcons.pause,
                     size: 16),
-                label: AppText(paused ? 'Resume' : 'Pause'),
+                label: AppText(
+                  paused
+                      ? 'scanner.resume'.getString(context)
+                      : 'scanner.pause'.getString(context),
+                ),
               ),
             ),
           ),
@@ -471,7 +483,7 @@ class _Controls extends StatelessWidget {
                   side: const BorderSide(color: Color(0x33FFFFFF)),
                 ),
                 icon: const Icon(LucideIcons.image, size: 16),
-                label: const AppText('Photo'),
+                label: AppText('scanner.photo'.getString(context)),
               ),
             ),
           ),
@@ -513,7 +525,7 @@ class _OpenButton extends StatelessWidget {
           TextButton(
             onPressed: onDismiss,
             child: AppText(
-              'Scan something else',
+              'scanner.scan_something_else'.getString(context),
               style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             ),
           ),

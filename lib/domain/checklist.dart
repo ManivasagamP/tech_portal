@@ -116,6 +116,10 @@ class ChecklistItem {
     this.sessions = const [],
     this.isOther = false,
     this.location,
+    this.isSignature = false,
+    this.signatureUrl,
+    this.signerName,
+    this.signedAt,
   });
 
   /// The server row as received. Checklist writes PATCH a copy of this so
@@ -139,6 +143,15 @@ class ChecklistItem {
   final List<ChecklistSession> sessions;
   final bool isOther;
   final String? location;
+
+  /// Marks the one synthetic item that holds the technician's sign-off — see
+  /// `checklistCloseGuard.ts` (server) for why this rides inside `checklists`
+  /// instead of a new column. Always paired with `isOther: true`. Mirrors the
+  /// web's `maintenance-checklist-v2.tsx` field names exactly.
+  final bool isSignature;
+  final String? signatureUrl;
+  final String? signerName;
+  final DateTime? signedAt;
 
   String get title => firstNonEmpty([name, task, description]) ?? 'Untitled task';
 
@@ -198,6 +211,10 @@ class ChecklistItem {
       sessions: sessions,
       isOther: asBool(json['isOther']) ?? false,
       location: json['location']?.toString(),
+      isSignature: asBool(json['isSignature']) ?? false,
+      signatureUrl: json['signatureUrl']?.toString(),
+      signerName: json['signerName']?.toString(),
+      signedAt: asDate(json['signedAt']),
     );
   }
 

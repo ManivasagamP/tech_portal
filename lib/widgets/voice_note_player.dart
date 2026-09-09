@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../theme/fe_colors.dart';
 import 'app_text.dart';
@@ -14,6 +19,29 @@ String formatClipDuration(Duration duration) {
   final minutes = duration.inMinutes;
   final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
   return '$minutes:$seconds';
+}
+
+bool _isDataUrl(String url) => url.startsWith('data:');
+
+/// Decodes a `data:<mime>;base64,<data>` string (a freshly-sent or
+/// history-loaded chat voice note — see `VoiceRecording.dataUrl`) to bytes
+/// and writes them to a fresh file in the temp directory, returning its path.
+/// `just_audio`'s `setFilePath` is the well-supported cross-platform way to
+/// play in-memory audio; there is no equivalent guarantee for handing it a
+/// raw `data:` URI.
+Future<String> _dataUrlToTempFile(String dataUrl) async {
+  final match = RegExp(r'^data:[^;,]+;base64,(.+)$', dotAll: true)
+      .firstMatch(dataUrl);
+  final bytes = match == null ? null : base64Decode(match.group(1)!);
+  if (bytes == null) {
+    throw const FormatException('Not a valid data: audio URL');
+  }
+  final directory = await getTemporaryDirectory();
+  final path =
+      '${directory.path}/chat-voice-${DateTime.now().microsecondsSinceEpoch}.aac';
+  final file = File(path);
+  await file.writeAsBytes(bytes);
+  return path;
 }
 
 class VoiceNotePlayer extends StatefulWidget {
@@ -42,9 +70,18 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
   Duration? _total;
   bool _playing = false;
 
+  /// Set only when [_ensurePlayer] decoded a `data:` URL to a temp file —
+  /// cleaned up on dispose so repeatedly opening a chat thread with voice
+  /// notes does not leave files behind.
+  String? _tempFilePath;
+
   @override
   void dispose() {
     _player?.dispose();
+    final path = _tempFilePath;
+    if (path != null) {
+      File(path).delete().catchError((_) async => File(path));
+    }
     super.dispose();
   }
 
@@ -58,7 +95,20 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
     });
     final player = AudioPlayer();
     try {
-      final duration = await player.setUrl(widget.audioUrl);
+      // A chat voice note arrives as an in-memory `data:<mime>;base64,<data>`
+      // string (see `VoiceRecording.dataUrl`), not a fetchable URL — native
+      // support for playing a `data:` URI directly via `setUrl` is
+      // inconsistent across platforms, so it is decoded and written to a
+      // temp file first, the same well-supported path `setFilePath` already
+      // uses for on-device recordings.
+      Duration? duration;
+      if (_isDataUrl(widget.audioUrl)) {
+        final tempPath = await _dataUrlToTempFile(widget.audioUrl);
+        _tempFilePath = tempPath;
+        duration = await player.setFilePath(tempPath);
+      } else {
+        duration = await player.setUrl(widget.audioUrl);
+      }
       player.positionStream.listen((position) {
         if (mounted) setState(() => _position = position);
       });
@@ -107,12 +157,12 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: FeColors.panel,
-        title: const AppText('Delete voice note?'),
-        content: const AppText('This cannot be undone.'),
+        title: AppText('widgets.delete_voice_note_title'.getString(context)),
+        content: AppText('common.cannot_be_undone'.getString(context)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const AppText('Cancel'),
+            child: AppText('common.cancel'.getString(context)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -120,7 +170,7 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const AppText('Delete'),
+            child: AppText('common.delete'.getString(context)),
           ),
         ],
       ),
@@ -143,7 +193,7 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
           const SizedBox(width: 6),
           Expanded(
             child: AppText.caption(
-              'Saved on this device — uploads when you are back online',
+              'widgets.voice_note_pending_upload'.getString(context),
               color: FeColors.warning,
             ),
           ),
@@ -192,7 +242,7 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
         Expanded(
           child: _failed
               ? AppText.caption(
-                  'This recording could not be loaded.',
+                  'widgets.voice_note_load_error'.getString(context),
                   color: FeColors.danger,
                 )
               : ClipRRect(
@@ -255,7 +305,7 @@ class _DeleteButtonState extends State<_DeleteButton> {
               )
             : IconButton(
                 padding: EdgeInsets.zero,
-                tooltip: 'Delete voice note',
+                tooltip: 'widgets.delete_voice_note_tooltip'.getString(context),
                 onPressed: _run,
                 icon: const Icon(LucideIcons.trash2,
                     size: 14, color: FeColors.ink2),

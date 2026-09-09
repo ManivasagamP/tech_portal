@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
@@ -135,7 +136,11 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
         _amplitudeStream = null;
       });
       if (recording == null) {
-        _report(const ActionOutcome.failed('Nothing was recorded.'));
+        _report(
+          ActionOutcome.failed(
+            'order_detail.nothing_recorded'.getString(context),
+          ),
+        );
         return;
       }
       _report(
@@ -169,6 +174,16 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
 
     final item = state.items[widget.index];
     final busy = state.busyIndex == widget.index;
+
+    // Digital-signature sign-off (2026-09-09): the signature is a normal
+    // checklist item everywhere else (Tasks list, close guard), but there is
+    // nothing to time, complete, attach a photo to, or note on it — its
+    // detail sheet is read-only and shows the drawn signature instead. See
+    // `checklistCloseGuard.ts` (server) and `close_sheet.dart` (where it is
+    // created) for the rest of this feature.
+    if (item.isSignature) {
+      return _SignatureItemSheet(item: item);
+    }
 
     // The modal route caps this sheet at a fixed fraction of the screen and
     // never accounts for the keyboard itself — without this padding the
@@ -221,10 +236,10 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
                       ),
                       label: AppText(
                         item.isRunning
-                            ? 'Pause'
+                            ? 'order_detail.pause'.getString(context)
                             : item.sessions.isEmpty
-                            ? 'Start Timer'
-                            : 'Start New Session',
+                            ? 'order_detail.start_timer'.getString(context)
+                            : 'order_detail.start_new_session'.getString(context),
                       ),
                     ),
                   ),
@@ -245,7 +260,9 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
                             : FeColors.ink2,
                       ),
                       child: AppText(
-                        item.isCompleted ? 'Mark Incomplete' : 'Mark Complete',
+                        item.isCompleted
+                            ? 'order_detail.mark_incomplete'.getString(context)
+                            : 'order_detail.mark_complete'.getString(context),
                       ),
                     ),
                   ),
@@ -287,6 +304,154 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
   }
 }
 
+/// Detail sheet for the one synthetic checklist item that holds the
+/// technician's sign-off. No timer, no complete toggle, no photos, no note
+/// composer — those all mutate a task; a signature is a record of a fact
+/// that already happened, so this sheet only ever displays it.
+class _SignatureItemSheet extends StatelessWidget {
+  const _SignatureItemSheet({required this.item});
+
+  final ChecklistItem item;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    child: SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: AppText.titleMedium(
+                    item.title,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(LucideIcons.x, size: 20),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+              child: SignatureDetail(item: item),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// The signature image, signer name, and signed date/time — read-only
+/// rendering of the synthetic sign-off item, for this sheet's own header
+/// (pen icon + "Signature" label). The Details tab's "Signature" section
+/// (`order_detail_screen.dart`) wants the same image+caption content under
+/// its own icon-in-circle section header instead of this one, so that part
+/// is factored out into [SignatureImageAndCaption] below and reused as-is.
+class SignatureDetail extends StatelessWidget {
+  const SignatureDetail({super.key, required this.item});
+
+  final ChecklistItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(LucideIcons.penLine, size: 16, color: FeColors.ink2),
+            const SizedBox(width: 8),
+            AppText.titleSmall(
+              'order_detail.signature_label'.getString(context),
+              weight: FontWeight.w700,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SignatureImageAndCaption(item: item),
+      ],
+    );
+  }
+}
+
+/// The signature image plus "Signed by X" / signed-date caption — no header
+/// of its own, so any call site supplies its own heading. Shared by
+/// [SignatureDetail] above and the Details tab's "Signature" section
+/// (`order_detail_screen.dart`), matching the web portal's read-only "Signed
+/// confirmation" panel (image + "Signed by X" + date).
+class SignatureImageAndCaption extends StatelessWidget {
+  const SignatureImageAndCaption({super.key, required this.item});
+
+  final ChecklistItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = item.signatureUrl;
+    final signerName = item.signerName;
+    final signedAt = item.signedAt;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (url != null && url.isNotEmpty)
+          GestureDetector(
+            onTap: () => showPhotoViewer(context, urls: [url], initial: url),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(context.radii.card),
+                border: Border.all(color: FeColors.line),
+              ),
+              child: Image.network(
+                url,
+                height: 140,
+                fit: BoxFit.contain,
+                errorBuilder: (context, _, _) => Container(
+                  height: 140,
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    LucideIcons.image,
+                    size: 24,
+                    color: FeColors.ink2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        AppText.bodyMedium(
+          signerName != null && signerName.isNotEmpty
+              ? context.formatString(
+                  'order_detail.signed_by'.getString(context),
+                  [signerName],
+                )
+              : 'order_detail.signed'.getString(context),
+          weight: FontWeight.w700,
+        ),
+        if (signedAt != null) ...[
+          const SizedBox(height: 4),
+          AppText.caption(
+            formatHistoryTimestamp(signedAt),
+            color: FeColors.ink2,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _TimeLog extends StatelessWidget {
   const _TimeLog({required this.item});
 
@@ -313,7 +478,7 @@ class _TimeLog extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: AppText.titleSmall(
-                  'Time Tracking',
+                  'order_detail.time_tracking'.getString(context),
                   color: FeColors.primary,
                   weight: FontWeight.w700,
                 ),
@@ -325,7 +490,10 @@ class _TimeLog extends StatelessWidget {
                   borderRadius: BorderRadius.circular(context.radii.md),
                 ),
                 child: AppText(
-                  'Total: ${formatMinutesAsHours(item.timeSpent ?? 0)}',
+                  context.formatString(
+                    'order_detail.total_time'.getString(context),
+                    [formatMinutesAsHours(item.timeSpent ?? 0)],
+                  ),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: FeColors.primary,
                     fontWeight: FontWeight.w700,
@@ -336,7 +504,10 @@ class _TimeLog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (sessions.isEmpty)
-            AppText.bodySmall('No sessions yet.', color: FeColors.primary)
+            AppText.bodySmall(
+              'order_detail.no_sessions'.getString(context),
+              color: FeColors.primary,
+            )
           else
             for (var i = 0; i < sessions.length; i++)
               _SessionRow(session: sessions[i], number: sessions.length - i),
@@ -377,7 +548,10 @@ class _SessionRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(context.radii.sm),
                   ),
                   child: AppText(
-                    'SESSION $number',
+                    context.formatString(
+                      'order_detail.session_number'.getString(context),
+                      [number],
+                    ),
                     style: theme.textTheme.labelSmall?.copyWith(
                       fontSize: 10,
                       color: FeColors.primary,
@@ -407,7 +581,7 @@ class _SessionRow extends StatelessWidget {
                 const Spacer(),
                 AppText.caption(
                   session.isRunning
-                      ? 'Running'
+                      ? 'order_detail.running'.getString(context)
                       : formatMinutesAsHours(session.timeSpent ?? 0),
                   color: session.isRunning ? FeColors.warning : FeColors.ink2,
                   weight: FontWeight.w700,
@@ -484,12 +658,18 @@ class _Notes extends StatelessWidget {
               color: FeColors.ink2,
             ),
             const SizedBox(width: 8),
-            AppText.titleSmall('Notes', weight: FontWeight.w700),
+            AppText.titleSmall(
+              'order_detail.notes_label'.getString(context),
+              weight: FontWeight.w700,
+            ),
           ],
         ),
         const SizedBox(height: 8),
         if (notes.isEmpty)
-          AppText.bodySmall('No notes yet.', color: FeColors.ink2)
+          AppText.bodySmall(
+            'order_detail.no_notes'.getString(context),
+            color: FeColors.ink2,
+          )
         else
           for (final note in notes)
             Padding(
@@ -548,23 +728,29 @@ class _Attachments extends StatelessWidget {
             const Icon(LucideIcons.paperclip, size: 16, color: FeColors.ink2),
             const SizedBox(width: 8),
             Expanded(
-              child: AppText.titleSmall('Photos', weight: FontWeight.w700),
+              child: AppText.titleSmall(
+                'order_detail.photos_label'.getString(context),
+                weight: FontWeight.w700,
+              ),
             ),
             IconButton(
               onPressed: onPick,
-              tooltip: 'Choose from gallery',
+              tooltip: 'order_detail.choose_from_gallery'.getString(context),
               icon: const Icon(LucideIcons.image, size: 18),
             ),
             IconButton(
               onPressed: onAdd,
-              tooltip: 'Take a photo',
+              tooltip: 'order_detail.take_a_photo'.getString(context),
               icon: const Icon(LucideIcons.camera, size: 18),
             ),
           ],
         ),
         const SizedBox(height: 8),
         if (item.attachments.isEmpty)
-          AppText.bodySmall('No photos attached.', color: FeColors.ink2)
+          AppText.bodySmall(
+            'order_detail.no_photos'.getString(context),
+            color: FeColors.ink2,
+          )
         else
           Wrap(
             spacing: 8,
@@ -599,12 +785,12 @@ class _AttachmentTile extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: FeColors.panel,
-        title: const AppText('Remove this photo?'),
-        content: const AppText('It will be taken off this task.'),
+        title: AppText('order_detail.remove_photo_title'.getString(context)),
+        content: AppText('order_detail.remove_photo_body'.getString(context)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const AppText('Cancel'),
+            child: AppText('common.cancel'.getString(context)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -612,7 +798,7 @@ class _AttachmentTile extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const AppText('Remove'),
+            child: AppText('common.remove'.getString(context)),
           ),
         ],
       ),
@@ -719,8 +905,8 @@ class _NoteComposer extends StatelessWidget {
                   enabled: enabled && !recording,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => onSend(),
-                  decoration: const InputDecoration(
-                    hintText: 'Add a note',
+                  decoration: InputDecoration(
+                    hintText: 'order_detail.add_note_hint'.getString(context),
                     isDense: true,
                   ),
                 ),
@@ -728,7 +914,9 @@ class _NoteComposer extends StatelessWidget {
         const SizedBox(width: 8),
         IconButton(
           onPressed: enabled ? onToggleRecording : null,
-          tooltip: recording ? 'Stop recording' : 'Record a voice note',
+          tooltip: recording
+              ? 'order_detail.stop_recording'.getString(context)
+              : 'order_detail.record_voice_note_tooltip'.getString(context),
           style: IconButton.styleFrom(
             backgroundColor: recording ? FeColors.dangerSoft : null,
           ),
@@ -740,7 +928,7 @@ class _NoteComposer extends StatelessWidget {
         ),
         IconButton(
           onPressed: enabled && !recording ? onSend : null,
-          tooltip: 'Send note',
+          tooltip: 'order_detail.send_note'.getString(context),
           icon: const Icon(LucideIcons.send, size: 20),
         ),
       ],

@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localization/flutter_localization.dart';
+
 import '../core/network/envelope.dart';
 import 'checklist.dart';
 
@@ -76,6 +79,17 @@ enum OrderType {
 
   String get listPath => '/api/fm/$entityPath/technician';
   String get checklistPath => entityPath;
+
+  /// Translated form of [label] for anything actually rendered on screen.
+  /// [label] itself stays English-only — it also backs non-UI uses (queue
+  /// item grouping text, log lines) that have no [BuildContext] to draw a
+  /// translation from.
+  String displayLabel(BuildContext context) => switch (this) {
+        OrderType.workOrder => 'order_type.work_order'.getString(context),
+        OrderType.preventive => 'order_type.preventive'.getString(context),
+        OrderType.reactive => 'order_type.reactive'.getString(context),
+        OrderType.annual => 'order_type.annual'.getString(context),
+      };
 
   static OrderType fromSlug(String? slug) => switch (slug) {
         'preventive' => OrderType.preventive,
@@ -158,6 +172,8 @@ class MaintenanceRecord {
     this.assignmentStatus,
     this.assignmentChain = const [],
     this.notesAudioUrl,
+    this.notes,
+    this.attachments = const [],
     this.frequency,
     this.urgency,
     this.contractValue,
@@ -204,6 +220,15 @@ class MaintenanceRecord {
   final List<AssignmentChainEntry> assignmentChain;
 
   final String? notesAudioUrl;
+
+  /// Free-text note an admin can set when creating the record (distinct from
+  /// [ChecklistNote]s, which technicians add per checklist item).
+  final String? notes;
+
+  /// File URLs an admin can attach at creation (distinct from a checklist
+  /// item's own [ChecklistItem.attachments]).
+  final List<String> attachments;
+
   final String? frequency;
   final String? urgency;
   final double? contractValue;
@@ -299,6 +324,13 @@ class MaintenanceRecord {
       assignmentStatus: json['assignmentStatus']?.toString(),
       assignmentChain: entries,
       notesAudioUrl: json['notesAudioUrl']?.toString(),
+      notes: json['notes']?.toString(),
+      attachments: (json['attachments'] is List)
+          ? (json['attachments'] as List)
+              .map((a) => a.toString())
+              .where((a) => a.isNotEmpty)
+              .toList()
+          : const [],
       frequency: json['frequency']?.toString(),
       urgency: json['urgency']?.toString(),
       contractValue: asDouble(json['contractValue']),

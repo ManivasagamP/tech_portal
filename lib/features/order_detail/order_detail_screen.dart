@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -8,14 +9,18 @@ import '../../core/network/envelope.dart';
 import '../../core/utils/checklist_status.dart';
 import '../../core/utils/currency.dart';
 import '../../core/utils/dates.dart';
+import '../../core/utils/external_launch.dart';
 import '../../domain/maintenance_record.dart';
 import '../../state/auth_controller.dart';
 import '../../state/order_detail_controller.dart';
-// import '../../theme/fe_colors.dart'; // only used by the hidden voice note sheet below
+import '../../theme/fe_colors.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
+import '../../widgets/photo_viewer.dart';
+import 'checklist_item_sheet.dart' show SignatureImageAndCaption;
 import 'checklist_tab.dart';
 import 'detail_widgets.dart';
+import 'documents_tab.dart';
 // import 'record_voice_note.dart'; // only used by the hidden voice note sheet below
 import 'history_tab.dart';
 import 'order_chat_sheet.dart';
@@ -30,21 +35,27 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
   final String orderType;
   final String orderId;
 
-  static String headerTitleFor(OrderType type) => switch (type) {
-    OrderType.workOrder => 'Work Order Details',
-    OrderType.preventive => 'Preventive Maintenance',
-    OrderType.reactive => 'Reactive Maintenance',
-    OrderType.annual => 'Annual Maintenance',
-  };
+  static String headerTitleFor(OrderType type, BuildContext context) =>
+      switch (type) {
+        OrderType.workOrder =>
+          'order_detail.header_work_order'.getString(context),
+        OrderType.preventive =>
+          'order_detail.header_preventive'.getString(context),
+        OrderType.reactive =>
+          'order_detail.header_reactive'.getString(context),
+        OrderType.annual => 'order_detail.header_annual'.getString(context),
+      };
 
-  static String detailTitleFor(MaintenanceRecord record) =>
+  static String detailTitleFor(MaintenanceRecord record, BuildContext context) =>
       switch (record.type) {
         OrderType.workOrder => record.titleField ?? '',
-        OrderType.preventive => record.assetName ?? 'Preventive Maintenance',
+        OrderType.preventive =>
+          record.assetName ?? 'order_detail.header_preventive'.getString(context),
         OrderType.reactive =>
           firstNonEmpty([record.assetName, record.subRequest]) ??
-              'Reactive Maintenance',
-        OrderType.annual => record.assetName ?? 'Annual Maintenance',
+              'order_detail.header_reactive'.getString(context),
+        OrderType.annual =>
+          record.assetName ?? 'order_detail.header_annual'.getString(context),
       };
 
   @override
@@ -85,11 +96,11 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               color: Color(0xFF0F172A),
               size: 22,
             ),
-            tooltip: 'Back',
+            tooltip: 'common.back'.getString(context),
             onPressed: () => context.pop(),
           ),
           title: Text(
-            OrderDetailScreen.headerTitleFor(key.type),
+            OrderDetailScreen.headerTitleFor(key.type, context),
             style: const TextStyle(
               fontSize: 19,
               fontWeight: FontWeight.w800,
@@ -100,13 +111,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           actions: [
             if (ref.watch(authControllerProvider).permissions.isAiAgent &&
                 detail.hasValue)
-              IconButton(
-                tooltip: 'Ask about this order',
-                icon: const Icon(
-                  LucideIcons.sparkles,
-                  color: Color(0xFF0F172A),
-                  size: 20,
-                ),
+              _ChatTriggerButton(
                 onPressed: () => showOrderChatSheet(
                   context,
                   orderKey: key,
@@ -117,20 +122,32 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           ],
           bottom: detail.hasValue
               ? _DetailTabBar(
+                  // The synthetic signature item rides in `checklists` (see
+                  // `checklist_status.dart`) but is not a task the
+                  // technician works, so it is excluded here too — the same
+                  // way `deriveChecklistSummary`/`isChecklistFullyComplete`
+                  // already exclude it via `isOther`.
                   tasksLabel: key.type == OrderType.workOrder
-                      ? 'Tasks (${detail.requireValue.record.checklists.length})'
-                      : 'Checklist',
+                      ? context.formatString(
+                          'order_detail.tasks_count'.getString(context),
+                          [
+                            detail.requireValue.record.checklists
+                                .where((i) => !i.isSignature)
+                                .length,
+                          ],
+                        )
+                      : 'order_detail.checklist'.getString(context),
                 )
               : null,
         ),
         body: detail.when(
           loading: () => const Center(child: TechSpinner()),
-          error: (error, _) => const Padding(
-            padding: EdgeInsets.all(16),
+          error: (error, _) => Padding(
+            padding: const EdgeInsets.all(16),
             child: TechEmptyState(
               icon: LucideIcons.circleAlert,
-              title: "Couldn't load this job",
-              subtitle: 'Please check your connection and try again.',
+              title: 'order_detail.load_failed_title'.getString(context),
+              subtitle: 'order_detail.load_failed_subtitle'.getString(context),
             ),
           ),
           data: (data) => TabBarView(
@@ -182,9 +199,9 @@ class _DetailTabBar extends StatelessWidget implements PreferredSizeWidget {
           fontWeight: FontWeight.w500,
         ),
         tabs: [
-          const Tab(text: 'Details'),
+          Tab(text: 'order_detail.tab_details'.getString(context)),
           Tab(text: tasksLabel),
-          const Tab(text: 'History'),
+          Tab(text: 'order_detail.tab_history'.getString(context)),
         ],
       ),
     ),
@@ -333,7 +350,7 @@ class _DetailsTab extends ConsumerWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  OrderDetailScreen.detailTitleFor(record),
+                  OrderDetailScreen.detailTitleFor(record, context),
                   style: const TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w800,
@@ -357,11 +374,11 @@ class _DetailsTab extends ConsumerWidget {
                     Expanded(
                       child: _ActionPillButton(
                         icon: LucideIcons.box,
-                        label: 'View in 3D',
+                        label: 'order_detail.view_in_3d'.getString(context),
                         onTap: () {
                           if (record.assetId != null) {
                             context.push(
-                              '${Routes.twin(record.assetId!)}?name=${Uri.encodeComponent(OrderDetailScreen.detailTitleFor(record))}',
+                              '${Routes.twin(record.assetId!)}?name=${Uri.encodeComponent(OrderDetailScreen.detailTitleFor(record, context))}',
                             );
                           }
                         },
@@ -397,6 +414,62 @@ class _DetailsTab extends ConsumerWidget {
             ),
           const SizedBox(height: 14),
 
+          // Signature section — only once the technician has actually signed
+          // off (a still-open record shows nothing here, not an empty
+          // section). The synthetic sign-off item no longer appears as a
+          // Tasks row (see `checklist_tab.dart`); this is its only visible
+          // place now, positioned right after the time-tracking/completion
+          // card since a signature is itself a completion fact, matching
+          // where the web shows its read-only "Signed confirmation" panel
+          // relative to checklist/completion state.
+          if (findSignatureItem(record.checklists) case final signature?) ...[
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF1F5F9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    LucideIcons.penLine,
+                    size: 18,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'order_detail.signature_label'.getString(context),
+                  style: const TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFFF1F5F9)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: SignatureImageAndCaption(item: signature),
+            ),
+            const SizedBox(height: 14),
+          ],
+
           // Assignment Invite Panel if pending
           AssignmentInvitePanel(
             record: record,
@@ -424,33 +497,33 @@ class _DetailsTab extends ConsumerWidget {
               children: [
                 _MetaItemRow(
                   icon: LucideIcons.mapPin,
-                  label: 'Location',
+                  label: 'order_detail.location_label'.getString(context),
                   value:
                       record.location ??
-                      'Fusion Eco Tower A - Ground Floor - Main Reception',
+                      'order_detail.location_fallback'.getString(context),
                 ),
                 const Divider(height: 28, color: Color(0xFFF1F5F9)),
                 _MetaItemRow(
                   icon: LucideIcons.calendar,
-                  label: 'Due Date',
-                  value: _dateValueFor(record),
+                  label: 'order_detail.due_date_label'.getString(context),
+                  value: _dateValueFor(record, context),
                 ),
                 const Divider(height: 28, color: Color(0xFFF1F5F9)),
                 _MetaItemRow(
                   icon: LucideIcons.user,
-                  label: 'Assigned To',
+                  label: 'order_detail.assigned_to_label'.getString(context),
                   value:
                       record.technicianName != null &&
                           record.technicianName!.isNotEmpty
                       ? record.technicianName!
-                      : 'Balaji',
+                      : 'order_detail.technician_fallback'.getString(context),
                 ),
                 if (record.type == OrderType.annual &&
                     record.contractValue != null) ...[
                   const Divider(height: 28, color: Color(0xFFF1F5F9)),
                   _MetaItemRow(
                     icon: LucideIcons.banknote,
-                    label: 'Contract Value',
+                    label: 'order_detail.contract_value_label'.getString(context),
                     value: formatCurrencyFromBase(
                       record.contractValue,
                       permissions,
@@ -497,9 +570,9 @@ class _DetailsTab extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      'Description',
-                      style: TextStyle(
+                    Text(
+                      'order_detail.description_label'.getString(context),
+                      style: const TextStyle(
                         fontSize: 16.5,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF0F172A),
@@ -511,7 +584,7 @@ class _DetailsTab extends ConsumerWidget {
                 Text(
                   record.description != null && record.description!.isNotEmpty
                       ? record.description!
-                      : 'Replace the AC unit filter as per maintenance manual.',
+                      : 'order_detail.description_fallback'.getString(context),
                   style: const TextStyle(
                     fontSize: 13.5,
                     color: Color(0xFF64748B),
@@ -521,13 +594,154 @@ class _DetailsTab extends ConsumerWidget {
               ],
             ),
           ),
+
+          // Admin notes — free text an admin can set when creating the
+          // record (distinct from the per-checklist-item notes a technician
+          // adds while working the job, shown in the Tasks tab). Hidden
+          // entirely rather than showing a fallback: most records have none.
+          if (record.notes != null && record.notes!.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFFF1F5F9)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF1F5F9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          LucideIcons.stickyNote,
+                          size: 18,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'order_detail.admin_notes_label'.getString(context),
+                        style: const TextStyle(
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    record.notes!,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      color: Color(0xFF64748B),
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Documents section — folded into Details instead of its own tab.
+          // Fixed-height frame rather than shrink-wrapping into this ListView:
+          // DocumentsTab owns its own loading/error/empty states and a
+          // RefreshIndicator built to fill an unconstrained tab body, and
+          // reusing it unmodified (see its own doc comment) means it still
+          // needs bounded height here, not infinite.
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  LucideIcons.paperclip,
+                  size: 18,
+                  color: Color(0xFF475569),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'order_detail.tab_documents'.getString(context),
+                style: const TextStyle(
+                  fontSize: 16.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 360,
+            child: DocumentsTab(assetId: record.assetId),
+          ),
+
+          // Admin attachments — files an admin attached when creating the
+          // record (distinct from [DocumentsTab] above, which is asset-scoped
+          // documents, and from a checklist item's own attachments below).
+          // Hidden entirely when empty, same as the Notes card.
+          if (record.attachments.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF1F5F9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    LucideIcons.paperclip,
+                    size: 18,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'order_detail.admin_attachments_title'.getString(context),
+                  style: const TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _AdminAttachmentsList(urls: record.attachments),
+          ],
           const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  static String _dateValueFor(MaintenanceRecord record) {
+  static String _dateValueFor(MaintenanceRecord record, BuildContext context) {
     if (record.type == OrderType.annual) {
       final start = asDate(record.raw['startDate']);
       final end = asDate(record.raw['endDate']);
@@ -536,7 +750,7 @@ class _DetailsTab extends ConsumerWidget {
       }
     }
     return record.effectiveDate == null
-        ? 'Jan 20, 2024'
+        ? 'order_detail.date_fallback'.getString(context)
         : formatDate(record.effectiveDate!);
   }
 }
@@ -595,6 +809,108 @@ class _ActionPillButton extends StatelessWidget {
   }
 }
 
+const _kImageExtensions = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'};
+
+/// Renders the admin-set `attachments` array as a plain list of open-able
+/// rows. These are not guaranteed to be photos — an admin can attach any
+/// file type — so each row opens in the in-app photo viewer only when the
+/// extension says it's an image, and otherwise hands off to the system app
+/// via [launchExternalUrl].
+class _AdminAttachmentsList extends StatelessWidget {
+  const _AdminAttachmentsList({required this.urls});
+
+  final List<String> urls;
+
+  static bool _isImage(String url) {
+    final ext = url.split('.').last.toLowerCase().split('?').first;
+    return _kImageExtensions.contains(ext);
+  }
+
+  static String _nameOf(String url) {
+    final path = Uri.tryParse(url)?.path ?? url;
+    final segment = path.split('/').last;
+    return segment.isEmpty ? url : segment;
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      for (final url in urls) ...[
+        _AttachmentRow(
+          url: url,
+          onTap: () => _isImage(url)
+              ? showPhotoViewer(context, urls: [url], initial: url)
+              : launchExternalUrl(url),
+        ),
+        if (url != urls.last) const SizedBox(height: 8),
+      ],
+    ],
+  );
+}
+
+class _AttachmentRow extends StatelessWidget {
+  const _AttachmentRow({required this.url, required this.onTap});
+
+  final String url;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(16),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFF1F5F9)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF0F9FF),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _AdminAttachmentsList._isImage(url)
+                    ? LucideIcons.image
+                    : LucideIcons.file,
+                size: 17,
+                color: const Color(0xFF0284C7),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _AdminAttachmentsList._nameOf(url),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: Color(0xFF94A3B8),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _MetaItemRow extends StatelessWidget {
   const _MetaItemRow({
     required this.icon,
@@ -649,4 +965,82 @@ class _MetaItemRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The AppBar action that opens [showOrderChatSheet]. Kept a plain icon on
+/// purpose (no pill, no filled circular background — an explicit product
+/// choice) but given a slow, soft "breathing" glow behind it so a technician
+/// notices the AI assistant is there without it reading as a badge or alert.
+///
+/// The glow is a radial gradient disc, not a flat circle: it fades to fully
+/// transparent at its edge, so at rest (small/faint) it barely reads as
+/// anything, and at its peak (larger/brighter) it still looks like soft light
+/// behind the icon rather than a button skin.
+class _ChatTriggerButton extends StatefulWidget {
+  const _ChatTriggerButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  State<_ChatTriggerButton> createState() => _ChatTriggerButtonState();
+}
+
+class _ChatTriggerButtonState extends State<_ChatTriggerButton>
+    with SingleTickerProviderStateMixin {
+  // One slow breathe in, breathe out per ~4.4s — deliberately unhurried so it
+  // reads as ambient rather than urgent.
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _pulse = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeInOut,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 48,
+    height: 48,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        AnimatedBuilder(
+          animation: _pulse,
+          builder: (context, _) {
+            final t = _pulse.value;
+            return Container(
+              width: 30 + 12 * t,
+              height: 30 + 12 * t,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    FeColors.primary.withValues(alpha: 0.16 + 0.14 * t),
+                    FeColors.primary.withValues(alpha: 0),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        IconButton(
+          tooltip: 'order_detail.ask_about_order'.getString(context),
+          icon: const Icon(
+            LucideIcons.sparkles,
+            color: Color(0xFF0F172A),
+            size: 20,
+          ),
+          onPressed: widget.onPressed,
+        ),
+      ],
+    ),
+  );
 }

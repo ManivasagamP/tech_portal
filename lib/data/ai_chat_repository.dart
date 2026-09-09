@@ -33,11 +33,20 @@ class AiChatRepository {
   }
 
   /// Returns the assistant's reply text and the id it was stored under.
+  ///
+  /// [images] are `data:<mimeType>;base64,<data>` strings (see
+  /// `CapturedPhoto.dataUrl`) — the exact shape the controller destructures
+  /// straight from `req.body.images` and forwards into `runFacilityAgentTurn`,
+  /// which regex-parses that format into Gemini `inlineData` parts. No other
+  /// encoding or upload step is needed. [audio] is the same shape but
+  /// singular (see `VoiceRecording.dataUrl`) — one voice note per message.
   Future<({String content, String? messageId})> send({
     required String message,
     required String sessionId,
     required OrderType type,
     required String recordId,
+    List<String> images = const [],
+    String? audio,
   }) async {
     final response = await _api.post(
       '/api/fm/ai/technician-checklist/chat',
@@ -48,6 +57,8 @@ class AiChatRepository {
         // The endpoint validates this against its own vocabulary, which is the
         // same slug set the detail routes use.
         'maintenanceType': type.slug,
+        if (images.isNotEmpty) 'images': images,
+        'audio': ?audio,
       },
       // Model turns are slow; the default 30 s read timeout cuts them off.
       receiveTimeout: const Duration(seconds: 90),

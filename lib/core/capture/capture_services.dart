@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,6 +14,36 @@ class CapturedPhoto {
 
   final Uint8List bytes;
   final String fileName;
+
+  /// MIME type inferred from the file's extension. `_take`'s maxWidth/
+  /// imageQuality resize does not force every output to JPEG — a PNG picked
+  /// from the gallery (a screenshot, say) stays a PNG — so this can't be
+  /// hard-coded. Falls back to JPEG, what the camera and most gallery photos
+  /// actually are.
+  String get mimeType {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      case 'heif':
+        return 'image/heif';
+      case 'gif':
+        return 'image/gif';
+      case 'jpg':
+      case 'jpeg':
+      default:
+        return 'image/jpeg';
+    }
+  }
+
+  /// The exact `data:<mime>;base64,<data>` shape the AI chat endpoint expects
+  /// for an attached image (`POST /api/fm/ai/technician-checklist/chat`'s
+  /// `images` array) — see `fmAgentCore.ts`'s inline-data regex on the server.
+  String get dataUrl => 'data:$mimeType;base64,${base64Encode(bytes)}';
 }
 
 class CapturedLocation {
@@ -155,8 +186,9 @@ class LocationCapture {
       final places = await _geocoding
           .placemarkFromCoordinates(lat, lng)
           .timeout(const Duration(seconds: 5));
-      if (places.isEmpty)
+      if (places.isEmpty) {
         return CapturedLocation(latitude: lat, longitude: lng);
+      }
 
       final place = places.first;
       final city = _firstNamed([
@@ -200,6 +232,15 @@ class VoiceRecording {
   final Uint8List bytes;
   final String fileName;
   final Duration duration;
+
+  /// The exact `data:<mime>;base64,<data>` shape the AI chat endpoint expects
+  /// for an attached voice note (`POST /api/fm/ai/technician-checklist/chat`'s
+  /// `audio` field) — see `fmAgentCore.ts`'s inline-data regex on the server.
+  /// `VoiceCapture` always records with the `record` package's default
+  /// encoder (AAC-LC) into an `.m4a` file, so the codec — not the container —
+  /// is declared here: Gemini's documented audio mime allow-list has
+  /// `audio/aac` but no separate `audio/mp4`/`audio/x-m4a` entry.
+  String get dataUrl => 'data:audio/aac;base64,${base64Encode(bytes)}';
 }
 
 class VoiceCapture {

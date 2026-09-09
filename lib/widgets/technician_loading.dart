@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../app/env.dart';
@@ -11,13 +12,16 @@ import 'app_text.dart';
 class TechnicianLoadingView extends StatefulWidget {
   const TechnicianLoadingView({
     super.key,
-    this.message = 'Loading your workspace...',
-    this.submessage = 'Connecting…',
+    this.message,
+    this.submessage,
     this.showBrand = true,
   });
 
-  final String message;
-  final String submessage;
+  /// Defaults to `widgets.loading_workspace` when null.
+  final String? message;
+
+  /// Defaults to `widgets.loading_connecting` when null.
+  final String? submessage;
   final bool showBrand;
 
   @override
@@ -172,7 +176,10 @@ class _TechnicianLoadingViewState extends State<TechnicianLoadingView>
                     ),
                     const SizedBox(width: 6),
                     AppText.caption(
-                      '${Env.brandName.toUpperCase()} FIELD OPS',
+                      context.formatString(
+                        'widgets.field_ops_brand'.getString(context),
+                        [Env.brandName.toUpperCase()],
+                      ),
                       color: FeColors.ink,
                       weight: FontWeight.w600,
                     ),
@@ -182,13 +189,13 @@ class _TechnicianLoadingViewState extends State<TechnicianLoadingView>
               const SizedBox(height: 12),
             ],
             AppText.title(
-              widget.message,
+              widget.message ?? 'widgets.loading_workspace'.getString(context),
               align: TextAlign.center,
               weight: FontWeight.w700,
             ),
             const SizedBox(height: 6),
             AppText.caption(
-              widget.submessage,
+              widget.submessage ?? 'widgets.loading_connecting'.getString(context),
               align: TextAlign.center,
               color: FeColors.ink2,
             ),

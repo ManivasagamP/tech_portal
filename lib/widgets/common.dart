@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/fe_colors.dart';
@@ -249,8 +250,14 @@ class PhasePlaceholder extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: TechEmptyState(
         icon: Icons.construction_outlined,
-        title: '$title — not built yet',
-        subtitle: 'Scheduled for $phase of the port plan.',
+        title: context.formatString(
+          'widgets.placeholder_title'.getString(context),
+          [title],
+        ),
+        subtitle: context.formatString(
+          'widgets.placeholder_subtitle'.getString(context),
+          [phase],
+        ),
       ),
     ),
   );

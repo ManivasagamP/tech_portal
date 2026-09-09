@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -70,7 +71,10 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
       setState(() => _locationError = e.message);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _locationError = 'Could not get your location.');
+      setState(
+        () => _locationError =
+            'order_detail.location_error_generic'.getString(context),
+      );
     } finally {
       if (mounted) setState(() => _locating = false);
     }
@@ -112,8 +116,8 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
                 Expanded(
                   child: AppText.titleMedium(
                     widget.mode == VerificationMode.end
-                        ? 'Session End Verification'
-                        : 'Identity Verification',
+                        ? 'order_detail.session_end_verification'.getString(context)
+                        : 'order_detail.identity_verification'.getString(context),
                     weight: FontWeight.w800,
                   ),
                 ),
@@ -155,8 +159,8 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
                 ),
                 child: AppText(
                   widget.mode == VerificationMode.end
-                      ? 'End session now'
-                      : 'Start task now',
+                      ? 'order_detail.end_session_now'.getString(context)
+                      : 'order_detail.start_task_now'.getString(context),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -167,7 +171,7 @@ class _VerificationSheetState extends ConsumerState<VerificationSheet> {
             if (!_ready) ...[
               const SizedBox(height: 12),
               AppText.caption(
-                'Complete the steps above to unlock task controls.',
+                'order_detail.unlock_task_controls'.getString(context),
                 align: TextAlign.center,
                 color: FeColors.ink2,
               ),
@@ -200,7 +204,7 @@ class _PhotoPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppText(
-          'VERIFICATION PHOTO',
+          'order_detail.verification_photo_label'.getString(context),
           style: theme.textTheme.labelSmall?.copyWith(
             color: FeColors.ink2,
             fontWeight: FontWeight.w700,
@@ -225,7 +229,7 @@ class _PhotoPanel extends StatelessWidget {
                             size: 36, color: Colors.white.withValues(alpha: 0.6)),
                         const SizedBox(height: 12),
                         AppText.bodySmall(
-                          'Take a photo of yourself to confirm you are on site.',
+                          'order_detail.verification_photo_prompt'.getString(context),
                           align: TextAlign.center,
                           color: Colors.white.withValues(alpha: 0.6),
                         ),
@@ -242,7 +246,11 @@ class _PhotoPanel extends StatelessWidget {
               child: ElevatedButton.icon(
                 onPressed: onRetake,
                 icon: const Icon(LucideIcons.camera, size: 16),
-                label: AppText(photo == null ? 'Take photo' : 'Retake'),
+                label: AppText(
+                  photo == null
+                      ? 'order_detail.take_photo'.getString(context)
+                      : 'order_detail.retake'.getString(context),
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -250,13 +258,13 @@ class _PhotoPanel extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onPick,
                 icon: const Icon(LucideIcons.upload, size: 16),
-                label: const AppText('Upload'),
+                label: AppText('common.upload'.getString(context)),
               )
             else
               OutlinedButton.icon(
                 onPressed: onClear,
                 icon: const Icon(LucideIcons.trash2, size: 16),
-                label: const AppText('Clear'),
+                label: AppText('common.clear'.getString(context)),
               ),
           ],
         ),
@@ -299,7 +307,7 @@ class _LocationPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   AppText(
-                    'LOCATION RECORDED',
+                    'order_detail.location_recorded_label'.getString(context),
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: FeColors.success,
                       fontWeight: FontWeight.w800,
@@ -360,13 +368,16 @@ class _LocationPanel extends StatelessWidget {
           Expanded(
             child: AppText.bodySmall(
               locating
-                  ? 'Getting your location…'
-                  : error ?? 'Location not captured yet.',
+                  ? 'order_detail.getting_location'.getString(context)
+                  : error ?? 'order_detail.location_not_captured'.getString(context),
               color: error == null ? FeColors.ink2 : FeColors.danger,
             ),
           ),
           if (!locating)
-            TextButton(onPressed: onRetry, child: const AppText('Retry')),
+            TextButton(
+              onPressed: onRetry,
+              child: AppText('common.retry'.getString(context)),
+            ),
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -93,10 +94,10 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Time Tracking',
-                  style: TextStyle(
+                  'order_detail.time_tracking'.getString(context),
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: FeColors.ink,
@@ -131,9 +132,9 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Time Elapsed',
-                    style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                  Text(
+                    'order_detail.time_elapsed'.getString(context),
+                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
                   ),
                 ],
               ),
@@ -141,16 +142,20 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
           ],
           if (widget.queuedComplete && widget.completedDate == null) ...[
             const SizedBox(height: 14),
-            const _CompletedBanner(
-              title: 'Completed — pending sync',
-              subtitle: 'Hours will show once this syncs back online.',
+            _CompletedBanner(
+              title: 'order_detail.completed_pending_sync'.getString(context),
+              subtitle:
+                  'order_detail.completed_pending_sync_subtitle'.getString(context),
             ),
           ],
           if (widget.completedDate != null && widget.actualHours != null) ...[
             const SizedBox(height: 14),
             _CompletedBanner(
-              title: 'Total Hours',
-              value: '${widget.actualHours} hrs',
+              title: 'order_detail.total_hours'.getString(context),
+              value: context.formatString(
+                'order_detail.hours_value'.getString(context),
+                [widget.actualHours],
+              ),
             ),
           ],
           const SizedBox(height: 16),
@@ -159,19 +164,19 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
             children: [
               Expanded(
                 child: _TrackingFact(
-                  label: 'Started',
+                  label: 'order_detail.started_label'.getString(context),
                   date: widget.startedDate,
-                  fallback: 'Not started',
+                  fallback: 'order_detail.not_started'.getString(context),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _TrackingFact(
-                  label: 'Completed',
+                  label: 'order_detail.completed_label'.getString(context),
                   date: widget.completedDate,
                   fallback: widget.queuedComplete
-                      ? 'Pending sync'
-                      : 'Not completed',
+                      ? 'order_detail.pending_sync'.getString(context)
+                      : 'order_detail.not_completed'.getString(context),
                 ),
               ),
             ],
@@ -253,16 +258,28 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, bg, fg) = completed
-        ? ('Completed', const Color(0xFFECFDF5), const Color(0xFF10B981))
+        ? (
+            'order_detail.status_completed'.getString(context),
+            const Color(0xFFECFDF5),
+            const Color(0xFF10B981),
+          )
         : queuedComplete
         ? (
-            'Completed — pending sync',
+            'order_detail.completed_pending_sync'.getString(context),
             const Color(0xFFECFDF5),
             const Color(0xFF10B981),
           )
         : started
-        ? ('In Progress', const Color(0xFFEFF6FF), const Color(0xFF0284C7))
-        : ('Not Started', const Color(0xFFF1F5F9), const Color(0xFF64748B));
+        ? (
+            'order_detail.status_in_progress'.getString(context),
+            const Color(0xFFEFF6FF),
+            const Color(0xFF0284C7),
+          )
+        : (
+            'order_detail.status_not_started'.getString(context),
+            const Color(0xFFF1F5F9),
+            const Color(0xFF64748B),
+          );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -377,7 +394,7 @@ class ChecklistSummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 AppText(
-                  'CHECKLIST SUMMARY',
+                  'order_detail.checklist_summary_label'.getString(context),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: FeColors.primary,
                     fontWeight: FontWeight.w700,
@@ -386,13 +403,16 @@ class ChecklistSummaryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 AppText.headlineSmall(
-                  summary.state.label,
+                  summary.state.displayLabel(context),
                   color: FeColors.primary,
                   weight: FontWeight.w700,
                 ),
                 const SizedBox(height: 4),
                 AppText.bodySmall(
-                  '${summary.completedCount}/${summary.totalCount} actionable items complete',
+                  context.formatString(
+                    'order_detail.actionable_items_complete'.getString(context),
+                    [summary.completedCount, summary.totalCount],
+                  ),
                   color: FeColors.primary,
                 ),
               ],
@@ -406,7 +426,7 @@ class ChecklistSummaryCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
             ),
             child: AppText.caption(
-              summary.state.label,
+              summary.state.displayLabel(context),
               color: Colors.white,
               weight: FontWeight.w700,
             ),
@@ -462,8 +482,8 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
       message:
           message ??
           (accept
-              ? 'This task is now yours.'
-              : 'It has been passed to the next available technician.'),
+              ? 'order_detail.assignment_accept_message'.getString(context)
+              : 'order_detail.assignment_decline_message'.getString(context)),
       queued: queued,
       isError: message != null && !queued,
     );
@@ -509,7 +529,7 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
                 ),
                 const SizedBox(width: 10),
                 AppText.titleSmall(
-                  'Job Assignment Offer',
+                  'order_detail.assignment_offer_title'.getString(context),
                   color: FeColors.warning,
                   weight: FontWeight.w700,
                 ),
@@ -517,8 +537,7 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
             ),
             const SizedBox(height: 8),
             AppText.bodySmall(
-              'You have a pending job assignment for this task. Accept to claim the job, '
-              'or decline with a reason to pass it back to dispatch.',
+              'order_detail.assignment_offer_body'.getString(context),
               color: FeColors.ink2,
             ),
             if (widget.record.assignmentChain.isNotEmpty) ...[
@@ -535,7 +554,7 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
                     foregroundColor: Colors.white,
                   ),
                   icon: const Icon(LucideIcons.check, size: 16),
-                  label: const AppText('Accept'),
+                  label: AppText('order_detail.accept'.getString(context)),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
@@ -547,7 +566,7 @@ class _AssignmentInvitePanelState extends ConsumerState<AssignmentInvitePanel> {
                     ),
                   ),
                   icon: const Icon(LucideIcons.x, size: 16),
-                  label: const AppText('Decline'),
+                  label: AppText('order_detail.decline'.getString(context)),
                 ),
               ],
             ),
@@ -623,22 +642,21 @@ class _DeclineDialogState extends State<_DeclineDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     backgroundColor: FeColors.panel,
-    title: const AppText('Decline this assignment'),
+    title: AppText('order_detail.decline_dialog_title'.getString(context)),
     content: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppText.bodySmall(
-          'Your reason is recorded on the task and shown to the admin. '
-          'The task is then offered to the next available technician.',
+          'order_detail.decline_dialog_body'.getString(context),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _controller,
           maxLines: 4,
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            hintText: 'e.g. Already on another site that day',
+          decoration: InputDecoration(
+            hintText: 'order_detail.decline_reason_hint'.getString(context),
           ),
         ),
       ],
@@ -646,7 +664,7 @@ class _DeclineDialogState extends State<_DeclineDialog> {
     actions: [
       TextButton(
         onPressed: () => Navigator.of(context).pop(),
-        child: const AppText('Cancel'),
+        child: AppText('common.cancel'.getString(context)),
       ),
       ElevatedButton(
         style: ElevatedButton.styleFrom(
@@ -656,7 +674,7 @@ class _DeclineDialogState extends State<_DeclineDialog> {
         onPressed: _controller.text.trim().isEmpty
             ? null
             : () => Navigator.of(context).pop(_controller.text.trim()),
-        child: const AppText('Confirm decline'),
+        child: AppText('order_detail.confirm_decline'.getString(context)),
       ),
     ],
   );

@@ -52,6 +52,7 @@ class OrdersState {
     this.loading = false,
     this.fromCache = false,
     this.error,
+    this.failedTypes = const [],
   });
 
   /// Null is the "All Tasks" selection.
@@ -63,6 +64,12 @@ class OrdersState {
   final bool fromCache;
   final String? error;
 
+  /// Kinds that failed to load on the last "All Tasks" fetch — see
+  /// [OrdersPage.failedTypes]. Always empty for a single-type selection: a
+  /// `listByType` failure surfaces through [error] instead, since there's
+  /// only one kind in flight and nothing partial to report.
+  final List<OrderType> failedTypes;
+
   bool get hasAnyFilter => filters.isActive || searchQuery.isNotEmpty;
 
   OrdersState copyWith({
@@ -73,6 +80,7 @@ class OrdersState {
     bool? loading,
     bool? fromCache,
     String? error,
+    List<OrderType>? failedTypes,
     bool clearType = false,
     bool clearError = false,
   }) =>
@@ -84,6 +92,7 @@ class OrdersState {
         loading: loading ?? this.loading,
         fromCache: fromCache ?? this.fromCache,
         error: clearError ? null : (error ?? this.error),
+        failedTypes: failedTypes ?? this.failedTypes,
       );
 
   /// Priority → status → timeframe → search → sort, in the web's order.
@@ -244,6 +253,10 @@ class OrdersController extends Notifier<OrdersState> {
         records: page.records,
         fromCache: page.fromCache,
         loading: false,
+        // Always overwritten (not merged) so switching away from "All
+        // Tasks" — or a clean retry of it — clears a stale banner rather
+        // than leaving yesterday's failure pinned to the screen.
+        failedTypes: page.failedTypes,
       );
     } on ApiFailure catch (e) {
       if (requestId != _requestId) return;

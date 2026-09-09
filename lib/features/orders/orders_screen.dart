@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -85,13 +86,13 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Orders',
-                          style: TextStyle(
+                          'orders.title'.getString(context),
+                          style: const TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.w800,
                             color: FeColors.ink,
@@ -99,10 +100,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                             height: 1.1,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'All your work orders in one place',
-                          style: TextStyle(
+                          'orders.subtitle'.getString(context),
+                          style: const TextStyle(
                             fontSize: 13.5,
                             color: FeColors.ink2,
                             fontWeight: FontWeight.w400,
@@ -114,13 +115,13 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                   const SizedBox(width: 8),
                   _CircleActionButton(
                     icon: LucideIcons.calendarDays,
-                    tooltip: 'Calendar',
+                    tooltip: 'common.calendar'.getString(context),
                     onTap: () => context.push(Routes.calendar),
                   ),
                   const SizedBox(width: 8),
                   _CircleActionButton(
                     icon: _showSearchBar ? LucideIcons.x : LucideIcons.search,
-                    tooltip: 'Search',
+                    tooltip: 'common.search'.getString(context),
                     onTap: () {
                       setState(() {
                         _showSearchBar = !_showSearchBar;
@@ -158,7 +159,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                           autofocus: true,
                           onChanged: controller.setSearchQuery,
                           decoration: InputDecoration(
-                            hintText: 'Search orders...',
+                            hintText: 'orders.search_hint'.getString(context),
                             hintStyle: const TextStyle(
                               color: Color(0xFF94A3B8),
                               fontSize: 14,
@@ -209,17 +210,17 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                               ),
                             ],
                           ),
-                          child: const Row(
+                          child: Row(
                             children: [
-                              Icon(
+                              const Icon(
                                 LucideIcons.slidersHorizontal,
                                 size: 17,
                                 color: Color(0xFF475569),
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Text(
-                                'Filters',
-                                style: TextStyle(
+                                'orders.filters'.getString(context),
+                                style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   color: Color(0xFF475569),
@@ -240,6 +241,16 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                 const SizedBox(height: 14),
               ],
 
+              // Diagnostic, not blocking: some kinds failed on the last "All
+              // Tasks" fetch (state.orders_controller.dart merges each
+              // OrdersPage.failedTypes straight through) but whatever did
+              // load is still shown below — this only tells the technician
+              // the empty-looking gaps might not be real.
+              if (state.failedTypes.isNotEmpty) ...[
+                const _PartialLoadBanner(),
+                const SizedBox(height: 14),
+              ],
+
               if (state.loading && state.records.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 48),
@@ -248,14 +259,14 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
               else if (state.error != null && state.records.isEmpty)
                 TechEmptyState(
                   icon: LucideIcons.triangleAlert,
-                  title: 'Failed to load orders',
+                  title: 'orders.load_failed'.getString(context),
                   subtitle: state.error,
                 )
               else if (visible.isEmpty)
-                const TechEmptyState(
+                TechEmptyState(
                   icon: LucideIcons.clipboardList,
-                  title: 'No orders found',
-                  subtitle: 'Try adjusting your filters',
+                  title: 'orders.empty_title'.getString(context),
+                  subtitle: 'orders.empty_subtitle'.getString(context),
                 )
               else
                 for (final record in visible)
@@ -329,6 +340,38 @@ class _CircleActionButton extends StatelessWidget {
   }
 }
 
+/// Non-blocking notice that one or more order kinds failed to load on the
+/// last "All Tasks" fetch (see OrdersRepository.listAll's `failedTypes` and
+/// OrdersController.refresh). Whatever kinds *did* load are still rendered
+/// below this — this exists purely so an all-empty or partial list reads as
+/// "something failed" rather than being indistinguishable from a technician
+/// who genuinely has zero assigned work.
+class _PartialLoadBanner extends StatelessWidget {
+  const _PartialLoadBanner();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: FeColors.warningSoft,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      children: [
+        const Icon(LucideIcons.triangleAlert, size: 16, color: FeColors.warning),
+        const SizedBox(width: 8),
+        Expanded(
+          child: AppText.bodySmall(
+            'orders.partial_load_failed'.getString(context),
+            color: FeColors.warning,
+            weight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _ActiveFilters extends StatelessWidget {
   const _ActiveFilters({required this.state, required this.onClearAll});
 
@@ -344,39 +387,48 @@ class _ActiveFilters extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         AppText.bodySmall(
-          'Active filters:',
+          'orders.active_filters_label'.getString(context),
           color: FeColors.ink2,
         ),
         if (filters.priority != null)
           _FilterPill(
-            label: 'Priority: ${filters.priority}',
+            label: context.formatString(
+              'orders.filter_priority'.getString(context),
+              [filters.priority],
+            ),
             background: FeColors.primary.withValues(alpha: 0.1),
             foreground: FeColors.primary,
           ),
         if (filters.status != null)
           _FilterPill(
-            label: 'Status: ${filters.status}',
+            label: context.formatString(
+              'orders.filter_status'.getString(context),
+              [filters.status],
+            ),
             background: FeColors.successSoft,
             foreground: FeColors.success,
           ),
         if (filters.dateFilter != DateFilter.all)
           _FilterPill(
             label: filters.dateFilter == DateFilter.overdue
-                ? 'Overdue'
-                : 'Due Today',
+                ? 'orders.overdue'.getString(context)
+                : 'orders.due_today'.getString(context),
             background: FeColors.dashboardAccentSoft,
             foreground: FeColors.dashboardAccent,
           ),
         if (state.searchQuery.isNotEmpty)
           _FilterPill(
-            label: 'Search: ${state.searchQuery}',
+            label: context.formatString(
+              'orders.filter_search'.getString(context),
+              [state.searchQuery],
+            ),
             background: FeColors.page,
             foreground: FeColors.ink2,
           ),
         GestureDetector(
           onTap: onClearAll,
           child: AppText.bodySmall(
-            'Clear all',
+            'orders.clear_all'.getString(context),
             color: FeColors.danger,
             weight: FontWeight.w500,
           ),

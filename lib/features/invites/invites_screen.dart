@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -32,12 +33,12 @@ class InvitesScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Assignments',
-                        style: TextStyle(
+                        'invites.title'.getString(context),
+                        style: const TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w800,
                           color: FeColors.ink,
@@ -45,10 +46,10 @@ class InvitesScreen extends ConsumerWidget {
                           height: 1.1,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'Tasks assigned to you',
-                        style: TextStyle(
+                        'invites.subtitle'.getString(context),
+                        style: const TextStyle(
                           fontSize: 13.5,
                           color: FeColors.ink2,
                           fontWeight: FontWeight.w400,
@@ -94,16 +95,16 @@ class InvitesScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 48),
                   child: TechSpinner(),
                 ),
-                error: (error, _) => const TechEmptyState(
+                error: (error, _) => TechEmptyState(
                   icon: LucideIcons.circleAlert,
-                  title: 'Could not load your assignments',
-                  subtitle: 'Pull down to try again.',
+                  title: 'invites.error_title'.getString(context),
+                  subtitle: 'common.pull_down_to_retry'.getString(context),
                 ),
                 data: (records) => records.isEmpty
-                    ? const TechEmptyState(
+                    ? TechEmptyState(
                         icon: LucideIcons.clipboardCheck,
-                        title: 'No pending assignments',
-                        subtitle: 'New assignments will show up here.',
+                        title: 'invites.empty_title'.getString(context),
+                        subtitle: 'invites.empty_subtitle'.getString(context),
                       )
                     : Column(
                         children: [
@@ -147,6 +148,12 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
     // it stays valid — grabbing it now is what lets the confirmation still
     // show after this widget is gone.
     final messenger = ScaffoldMessenger.of(context);
+    final acceptedMessage = 'invites.accept_success_message'.getString(
+      context,
+    );
+    final declinedMessage = 'invites.decline_success_message'.getString(
+      context,
+    );
     setState(() {
       _responding = true;
       _accepting = accept;
@@ -158,10 +165,7 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          message ??
-              (accept
-                  ? 'This task is now yours.'
-                  : 'It has been passed to the next available technician.'),
+          message ?? (accept ? acceptedMessage : declinedMessage),
         ),
       ),
     );
@@ -255,9 +259,9 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
-                      'Job Assignment Offer',
-                      style: TextStyle(
+                    Text(
+                      'invites.offer_title'.getString(context),
+                      style: const TextStyle(
                         fontSize: 15.5,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFFD97706),
@@ -266,9 +270,9 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'You have a pending job assignment for this task. Accept to claim the job, or decline with a reason to pass it back to dispatch.',
-                  style: TextStyle(
+                Text(
+                  'invites.offer_description'.getString(context),
+                  style: const TextStyle(
                     fontSize: 13,
                     color: Color(0xFF64748B),
                     height: 1.4,
@@ -305,9 +309,9 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                         color: const Color(0xFFFEF3C7),
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Text(
-                        'Pending',
-                        style: TextStyle(
+                      child: Text(
+                        'invites.pending_badge'.getString(context),
+                        style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFFD97706),
@@ -347,18 +351,20 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                                   ),
                                 ),
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     LucideIcons.check,
                                     color: Colors.white,
                                     size: 18,
                                   ),
-                                  SizedBox(width: 8),
+                                  const SizedBox(width: 8),
                                   Text(
-                                    'Accept',
-                                    style: TextStyle(
+                                    'invites.accept_button'.getString(
+                                      context,
+                                    ),
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 15,
                                       fontWeight: FontWeight.w700,
@@ -399,18 +405,20 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
                                   ),
                                 ),
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     LucideIcons.x,
                                     color: Color(0xFFEF4444),
                                     size: 18,
                                   ),
-                                  SizedBox(width: 8),
+                                  const SizedBox(width: 8),
                                   Text(
-                                    'Decline',
-                                    style: TextStyle(
+                                    'invites.decline_button'.getString(
+                                      context,
+                                    ),
+                                    style: const TextStyle(
                                       color: Color(0xFFEF4444),
                                       fontSize: 15,
                                       fontWeight: FontWeight.w700,
@@ -431,18 +439,18 @@ class _AssignmentCardState extends ConsumerState<_AssignmentCard> {
           GestureDetector(
             onTap: () =>
                 context.push(Routes.orderDetail(record.type.slug, record.id)),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+                const Icon(
                   LucideIcons.arrowRight,
                   size: 16,
                   color: Color(0xFF0284C7),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
-                  'Open the task',
-                  style: TextStyle(
+                  'invites.open_task_link'.getString(context),
+                  style: const TextStyle(
                     color: Color(0xFF0284C7),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -477,26 +485,25 @@ class _DeclineDialogState extends State<_DeclineDialog> {
   Widget build(BuildContext context) => AlertDialog(
     backgroundColor: FeColors.panel,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-    title: const Text(
-      'Decline this assignment',
-      style: TextStyle(fontWeight: FontWeight.w800),
+    title: Text(
+      'invites.decline_dialog_title'.getString(context),
+      style: const TextStyle(fontWeight: FontWeight.w800),
     ),
     content: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Your reason is recorded on the task and shown to the admin. '
-          'The task is then offered to the next available technician.',
-          style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+        Text(
+          'invites.decline_dialog_description'.getString(context),
+          style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _controller,
           maxLines: 4,
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            hintText: 'e.g. Already on another site that day',
+          decoration: InputDecoration(
+            hintText: 'invites.decline_reason_hint'.getString(context),
           ),
         ),
       ],
@@ -504,7 +511,7 @@ class _DeclineDialogState extends State<_DeclineDialog> {
     actions: [
       TextButton(
         onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Cancel'),
+        child: Text('common.cancel'.getString(context)),
       ),
       ElevatedButton(
         style: ElevatedButton.styleFrom(
@@ -514,7 +521,7 @@ class _DeclineDialogState extends State<_DeclineDialog> {
         onPressed: _controller.text.trim().isEmpty
             ? null
             : () => Navigator.of(context).pop(_controller.text.trim()),
-        child: const Text('Confirm decline'),
+        child: Text('invites.confirm_decline_button'.getString(context)),
       ),
     ],
   );

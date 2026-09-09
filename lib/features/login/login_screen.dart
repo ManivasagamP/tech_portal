@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -47,9 +48,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await ref.read(authControllerProvider.notifier).logout();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: AppText(
-              'This account belongs to a partner. Use the partner portal to sign in.',
+              'login.partner_account_message'.getString(context),
             ),
           ),
         );
@@ -68,28 +69,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(LucideIcons.server, size: 20, color: FeColors.primary),
-            SizedBox(width: 8),
-            AppText.title('Connection Settings'),
+            const Icon(LucideIcons.server, size: 20, color: FeColors.primary),
+            const SizedBox(width: 8),
+            AppText.title('login.connection_settings_title'.getString(ctx)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const AppText.bodySmall(
-              'Only change this if your IT team has asked you to.',
+            AppText.bodySmall(
+              'login.connection_settings_hint'.getString(ctx),
               color: FeColors.ink2,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'Server Address',
-                hintText: 'http://localhost:5000',
-                prefixIcon: Icon(LucideIcons.globe, size: 16),
+              decoration: InputDecoration(
+                labelText: 'login.server_address_label'.getString(ctx),
+                hintText: 'login.server_address_hint'.getString(ctx),
+                prefixIcon: const Icon(LucideIcons.globe, size: 16),
               ),
             ),
           ],
@@ -100,7 +101,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               await store.writeBaseUrlOverride(null);
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
-            child: const AppText('Reset to Default', color: FeColors.ink2),
+            child: AppText(
+              'login.reset_to_default'.getString(ctx),
+              color: FeColors.ink2,
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -108,7 +112,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               await store.writeBaseUrlOverride(val.isEmpty ? null : val);
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
-            child: const AppText('Save'),
+            child: AppText('common.save'.getString(ctx)),
           ),
         ],
       ),
@@ -198,17 +202,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           width: 1,
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             LucideIcons.shieldCheck,
                             size: 13,
                             color: FeColors.primary,
                           ),
-                          SizedBox(width: 6),
+                          const SizedBox(width: 6),
                           AppText.caption(
-                            'SECURE SIGN IN',
+                            'login.secure_sign_in_badge'.getString(context),
                             color: FeColors.ink,
                             weight: FontWeight.w600,
                           ),
@@ -219,13 +223,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 10),
 
                   AppText.title(
-                    '${Env.brandName} Technician',
+                    context.formatString(
+                      'login.title_with_brand'.getString(context),
+                      [Env.brandName],
+                    ),
                     align: TextAlign.center,
                     weight: FontWeight.w700,
                   ),
                   const SizedBox(height: 4),
-                  const AppText.bodySmall(
-                    'Field service app for technicians',
+                  AppText.bodySmall(
+                    'login.tagline'.getString(context),
                     align: TextAlign.center,
                     color: FeColors.ink2,
                   ),
@@ -244,17 +251,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           width: 1,
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(
+                          const Icon(
                             LucideIcons.clockAlert,
                             color: FeColors.warning,
                             size: 20,
                           ),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: AppText.bodySmall(
-                              "You've been signed out after 24 hours. Please sign in again.",
+                              'login.session_expired_message'.getString(
+                                context,
+                              ),
                               color: FeColors.ink,
                             ),
                           ),
@@ -268,11 +277,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     padding: const EdgeInsets.all(24),
                     radius: 16,
                     child: auth.isBusy
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24),
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
                             child: TechnicianLoadingView(
-                              message: 'Signing you in...',
-                              submessage: 'Checking your username and password',
+                              message: 'login.signing_in_message'.getString(
+                                context,
+                              ),
+                              submessage: 'login.signing_in_submessage'
+                                  .getString(context),
                               showBrand: false,
                             ),
                           )
@@ -281,8 +293,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                const AppText.label(
-                                  'TECHNICIAN SIGN IN',
+                                AppText.label(
+                                  'login.technician_sign_in_label'.getString(
+                                    context,
+                                  ),
                                   color: FeColors.ink2,
                                   weight: FontWeight.w700,
                                 ),
@@ -292,10 +306,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   controller: _username,
                                   autocorrect: false,
                                   textInputAction: TextInputAction.next,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Technician ID or Username',
-                                    hintText: 'e.g. tech1 or email@domain.com',
-                                    prefixIcon: Icon(
+                                  decoration: InputDecoration(
+                                    labelText: 'login.technician_id_label'
+                                        .getString(context),
+                                    hintText: 'login.technician_id_hint'
+                                        .getString(context),
+                                    prefixIcon: const Icon(
                                       LucideIcons.userCheck,
                                       size: 18,
                                       color: FeColors.primary,
@@ -303,7 +319,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                   validator: (value) =>
                                       (value == null || value.trim().isEmpty)
-                                      ? 'Technician ID or username is required'
+                                      ? 'login.technician_id_required'
+                                            .getString(context)
                                       : null,
                                 ),
                                 const SizedBox(height: 16),
@@ -314,7 +331,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   textInputAction: TextInputAction.done,
                                   onFieldSubmitted: (_) => _submit(),
                                   decoration: InputDecoration(
-                                    labelText: 'Password',
+                                    labelText: 'common.password'.getString(
+                                      context,
+                                    ),
                                     prefixIcon: const Icon(
                                       LucideIcons.keyRound,
                                       size: 18,
@@ -334,7 +353,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                   validator: (value) =>
                                       (value == null || value.isEmpty)
-                                      ? 'Password is required'
+                                      ? 'login.password_required'.getString(
+                                          context,
+                                        )
                                       : null,
                                 ),
 
@@ -385,14 +406,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
-                                    child: const Row(
+                                    child: Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: [
-                                        Icon(LucideIcons.logIn, size: 18),
-                                        SizedBox(width: 8),
+                                        const Icon(
+                                          LucideIcons.logIn,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
                                         AppText(
-                                          'Sign In',
+                                          'login.sign_in_button'.getString(
+                                            context,
+                                          ),
                                           color: Colors.white,
                                           weight: FontWeight.w600,
                                         ),
@@ -416,13 +442,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         color: FeColors.ink2,
                       ),
                       const SizedBox(width: 4),
-                      const AppText.caption(
-                        'Stays signed in for 24 hours',
+                      AppText.caption(
+                        'login.stays_signed_in'.getString(context),
                         color: FeColors.ink2,
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        tooltip: 'Connection Settings',
+                        tooltip: 'login.connection_settings_title'.getString(
+                          context,
+                        ),
                         icon: const Icon(
                           LucideIcons.settings2,
                           size: 15,

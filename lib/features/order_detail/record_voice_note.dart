@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
@@ -61,13 +62,17 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
         _saving = recording != null;
       });
       if (recording == null) {
-        _report('Nothing was recorded.', isError: true);
+        _report(
+          'order_detail.nothing_recorded'.getString(context),
+          isError: true,
+        );
         return;
       }
       final outcome = await controller.setRecordVoiceNote(voice: recording);
-      if (mounted) setState(() => _saving = false);
+      if (!mounted) return;
+      setState(() => _saving = false);
       _report(
-        outcome?.text ?? 'Your recording is attached to this order.',
+        outcome?.text ?? 'order_detail.voice_note_attached'.getString(context),
         queued: outcome?.queued ?? false,
         isError: outcome != null && !outcome.queued,
       );
@@ -91,8 +96,9 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
     final outcome = await ref
         .read(checklistControllerProvider(widget.orderKey).notifier)
         .setRecordVoiceNote();
+    if (!mounted) return;
     _report(
-      outcome?.text ?? 'The recording has been removed.',
+      outcome?.text ?? 'order_detail.voice_note_removed'.getString(context),
       queued: outcome?.queued ?? false,
       isError: outcome != null && !outcome.queued,
     );
@@ -127,12 +133,12 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
               ),
               label: AppText(
                 _saving
-                    ? 'Saving…'
+                    ? 'order_detail.saving_ellipsis'.getString(context)
                     : _recording
-                    ? 'Stop recording'
+                    ? 'order_detail.stop_recording'.getString(context)
                     : url == null
-                    ? 'Record voice note'
-                    : 'Replace voice note',
+                    ? 'order_detail.record_voice_note_button'.getString(context)
+                    : 'order_detail.replace_voice_note'.getString(context),
               ),
             ),
             if (_recording && _amplitudeStream != null) ...[
@@ -159,7 +165,7 @@ class _RecordVoiceNoteState extends ConsumerState<RecordVoiceNote> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 AppText(
-                  'YOUR VOICE NOTE',
+                  'order_detail.your_voice_note_label'.getString(context),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: FeColors.ink2,
                     fontWeight: FontWeight.w700,

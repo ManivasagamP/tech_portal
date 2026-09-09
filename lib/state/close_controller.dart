@@ -65,6 +65,12 @@ class CloseRejected extends CloseResult {
 
   bool get needsRootCause => missing.contains('rootCause');
   bool get needsChecklist => missing.contains('checklist');
+
+  /// The unconditional signature gate (2026-09-09) — see
+  /// `checklistCloseGuard.ts` (server). Reachable in normal use only if the
+  /// signature write above got queued offline and has not synced yet by the
+  /// time the completion call reaches the server.
+  bool get needsSignature => missing.contains('signature');
 }
 
 /// Something the technician has to fix before the calls are worth sending, or

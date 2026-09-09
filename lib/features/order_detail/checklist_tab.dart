@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -76,46 +77,52 @@ class ChecklistTab extends ConsumerWidget {
     final state = ref.watch(checklistControllerProvider(orderKey));
     final items = state.items;
     final summary = deriveChecklistSummary(items);
+    // The synthetic signature item lives on `items` (the close guard and
+    // `_CloseSection` below need the full list), but it is not a task the
+    // technician works — it never appears as a Tasks row. Its own read-only
+    // view now lives in the Details tab instead (order_detail_screen.dart).
+    final visibleCount = items.where((i) => !i.isSignature).length;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         _ProgressHeader(summary: summary),
         const SizedBox(height: 16),
-        if (items.isEmpty)
-          const TechEmptyState(
+        if (visibleCount == 0)
+          TechEmptyState(
             icon: LucideIcons.listChecks,
-            title: 'No checklist items',
-            subtitle: 'Add an "Other" task to record work done here.',
+            title: 'order_detail.checklist_empty_title'.getString(context),
+            subtitle: 'order_detail.checklist_empty_subtitle'.getString(context),
           )
         else
           for (var index = 0; index < items.length; index++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _ChecklistRow(
-                item: items[index],
-                busy: state.busyIndex == index,
-                onOpen: () => _openItem(context, index),
-                onToggle: () async {
-                  final outcome = await ref
-                      .read(checklistControllerProvider(orderKey).notifier)
-                      .toggle(index);
-                  if (outcome != null && context.mounted) {
-                    showTechPopup(
-                      context,
-                      message: outcome.text,
-                      queued: outcome.queued,
-                      isError: !outcome.queued,
-                    );
-                  }
-                },
+            if (!items[index].isSignature)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ChecklistRow(
+                  item: items[index],
+                  busy: state.busyIndex == index,
+                  onOpen: () => _openItem(context, index),
+                  onToggle: () async {
+                    final outcome = await ref
+                        .read(checklistControllerProvider(orderKey).notifier)
+                        .toggle(index);
+                    if (outcome != null && context.mounted) {
+                      showTechPopup(
+                        context,
+                        message: outcome.text,
+                        queued: outcome.queued,
+                        isError: !outcome.queued,
+                      );
+                    }
+                  },
+                ),
               ),
-            ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: state.addingOther ? null : () => _addOther(context, ref),
           icon: const Icon(LucideIcons.plus, size: 16),
-          label: const AppText('Add Other Task'),
+          label: AppText('order_detail.add_other_task'.getString(context)),
         ),
         const SizedBox(height: 16),
         _CloseSection(items: items, record: record, orderKey: orderKey),
@@ -151,9 +158,14 @@ class _ProgressHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    AppText.titleSmall('Checklist', weight: FontWeight.w600),
+                    AppText.titleSmall(
+                      'order_detail.checklist'.getString(context),
+                      weight: FontWeight.w600,
+                    ),
                     AppText.caption(
-                      complete ? 'All tasks completed' : 'Track progress',
+                      complete
+                          ? 'order_detail.all_tasks_completed'.getString(context)
+                          : 'order_detail.track_progress'.getString(context),
                       color: FeColors.ink2,
                     ),
                   ],
@@ -189,7 +201,10 @@ class _ProgressHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          AppText.bodySmall(summary.state.label, color: FeColors.ink2),
+          AppText.bodySmall(
+            summary.state.displayLabel(context),
+            color: FeColors.ink2,
+          ),
         ],
       ),
     );
@@ -227,6 +242,16 @@ class _ChecklistRow extends StatelessWidget {
                     padding: EdgeInsets.all(2),
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
+                // The signature item is a record of a fact, not a task — it
+                // is never unticked after the fact (that would silently
+                // break the server's signature-required close gate), so it
+                // gets a plain locked mark instead of an editable checkbox.
+                : item.isSignature
+                ? const Icon(
+                    LucideIcons.penLine,
+                    size: 18,
+                    color: FeColors.success,
+                  )
                 : Checkbox(
                     value: item.isCompleted,
                     onChanged: (_) => onToggle(),
@@ -248,14 +273,14 @@ class _ChecklistRow extends StatelessWidget {
                       ),
                     ),
                     if (item.isOther)
-                      const _RowChip(
-                        label: 'Other',
+                      _RowChip(
+                        label: 'order_detail.chip_other'.getString(context),
                         background: FeColors.page,
                         foreground: FeColors.ink2,
                       ),
                     if (item.isRunning)
-                      const _RowChip(
-                        label: 'Running…',
+                      _RowChip(
+                        label: 'order_detail.chip_running'.getString(context),
                         background: FeColors.warningSoft,
                         foreground: FeColors.warning,
                         icon: LucideIcons.clock,
@@ -426,13 +451,15 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
         (!mandatory || isChecklistFullyComplete(widget.items));
 
     if (widget.record.completedDate != null) {
-      return const TechCard(
+      return TechCard(
         borderColor: FeColors.successSoft,
         child: Row(
           children: [
-            Icon(LucideIcons.circleCheck, size: 18, color: FeColors.success),
-            SizedBox(width: 12),
-            Expanded(child: AppText('This job is closed.')),
+            const Icon(LucideIcons.circleCheck, size: 18, color: FeColors.success),
+            const SizedBox(width: 12),
+            Expanded(
+              child: AppText('order_detail.job_closed'.getString(context)),
+            ),
           ],
         ),
       );
@@ -448,8 +475,8 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
             Expanded(
               child: AppText.bodySmall(
                 mandatory
-                    ? 'Complete every task before this job can be closed.'
-                    : 'Complete at least one task before this job can be closed.',
+                    ? 'order_detail.close_gate_mandatory'.getString(context)
+                    : 'order_detail.close_gate_optional'.getString(context),
                 color: FeColors.ink2,
               ),
             ),
@@ -473,7 +500,7 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
               const SizedBox(width: 12),
               Expanded(
                 child: AppText.bodySmall(
-                  'This job is ready to close.',
+                  'order_detail.job_ready_to_close'.getString(context),
                   color: FeColors.ink2,
                 ),
               ),
@@ -484,10 +511,11 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
             controller: _hoursController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              labelText: 'Manual hours (optional)',
-              hintText:
-                  'Leave empty to use the tracked '
-                  '${calculateChecklistsActualHours(widget.items)} hrs',
+              labelText: 'order_detail.manual_hours_label'.getString(context),
+              hintText: context.formatString(
+                'order_detail.manual_hours_hint'.getString(context),
+                [calculateChecklistsActualHours(widget.items)],
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -497,7 +525,7 @@ class _CloseSectionState extends ConsumerState<_CloseSection> {
               minimumSize: const Size.fromHeight(48),
               backgroundColor: FeColors.success,
             ),
-            child: const AppText('Completed Works'),
+            child: AppText('order_detail.completed_works_button'.getString(context)),
           ),
         ],
       ),
@@ -524,24 +552,26 @@ class _AddOtherDialogState extends State<_AddOtherDialog> {
   @override
   Widget build(BuildContext context) => AlertDialog(
     backgroundColor: FeColors.panel,
-    title: const AppText('Add other task'),
+    title: AppText('order_detail.add_other_dialog_title'.getString(context)),
     content: TextField(
       controller: _controller,
       autofocus: true,
       maxLines: 3,
       onChanged: (_) => setState(() {}),
-      decoration: const InputDecoration(hintText: 'Describe the work you did'),
+      decoration: InputDecoration(
+        hintText: 'order_detail.add_other_hint'.getString(context),
+      ),
     ),
     actions: [
       TextButton(
         onPressed: () => Navigator.of(context).pop(),
-        child: const AppText('Cancel'),
+        child: AppText('common.cancel'.getString(context)),
       ),
       ElevatedButton(
         onPressed: _controller.text.trim().isEmpty
             ? null
             : () => Navigator.of(context).pop(_controller.text.trim()),
-        child: const AppText('Add'),
+        child: AppText('common.add'.getString(context)),
       ),
     ],
   );

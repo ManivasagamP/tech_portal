@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -36,8 +37,7 @@ class TechHeader extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final location = GoRouterState.of(context).matchedLocation;
-    final unseen =
-        ref.watch(unseenNotificationCountProvider).valueOrNull ?? 0;
+    final unseen = ref.watch(unseenNotificationCountProvider).valueOrNull ?? 0;
 
     return FeHeader(
       title: title,
@@ -46,20 +46,20 @@ class TechHeader extends ConsumerWidget implements PreferredSizeWidget {
         if (showCalendar && location != Routes.calendar)
           _HeaderButton(
             icon: LucideIcons.calendarDays,
-            tooltip: 'Calendar',
+            tooltip: 'common.calendar'.getString(context),
             onTap: () => context.push(Routes.calendar),
           ),
         if (showNotifications)
           _HeaderButton(
             icon: LucideIcons.bell,
-            tooltip: 'Notifications',
+            tooltip: 'common.notifications'.getString(context),
             badge: unseen,
             onTap: () => context.push(Routes.notifications),
           ),
         if (onLogout != null)
           _HeaderButton(
             icon: LucideIcons.logOut,
-            tooltip: 'Log Out',
+            tooltip: 'common.log_out'.getString(context),
             onTap: onLogout!,
           ),
         const SizedBox(width: 4),
@@ -113,11 +113,11 @@ class _HeaderButton extends StatelessWidget {
               badge > 9 ? '9+' : '$badge',
               align: TextAlign.center,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    fontSize: 9,
-                    height: 1.2,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
+                fontSize: 9,
+                height: 1.2,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -148,17 +148,14 @@ Future<bool> showLogoutDialog(BuildContext context) async {
             child: Icon(LucideIcons.logOut, size: 20, color: FeColors.danger),
           ),
           const SizedBox(width: 12),
-          const AppText('Sign Out'),
+          AppText('common.sign_out_title'.getString(context)),
         ],
       ),
-      content: const AppText(
-        'Are you sure you want to log out of the technician portal? '
-        'You will need to sign in again to access your tasks.',
-      ),
+      content: AppText('common.sign_out_message'.getString(context)),
       actions: [
         OutlinedButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const AppText('Cancel'),
+          child: AppText('common.cancel'.getString(context)),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
@@ -166,7 +163,7 @@ Future<bool> showLogoutDialog(BuildContext context) async {
             foregroundColor: Colors.white,
           ),
           onPressed: () => Navigator.of(context).pop(true),
-          child: const AppText('Log Out'),
+          child: AppText('common.log_out'.getString(context)),
         ),
       ],
     ),

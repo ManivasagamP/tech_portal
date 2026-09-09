@@ -1,13 +1,16 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../app/locale_config.dart';
 import '../../app/router.dart';
 import '../../state/auth_controller.dart';
 import '../../state/dashboard_controller.dart';
+import '../../state/locale_controller.dart';
 import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
 import '../../widgets/app_text.dart';
@@ -20,10 +23,10 @@ import '../../widgets/tech_header.dart';
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
-  static String greetingFor(DateTime now) {
-    if (now.hour < 12) return 'Good Morning';
-    if (now.hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
+  static String greetingFor(DateTime now, BuildContext context) {
+    if (now.hour < 12) return 'dashboard.greeting_morning'.getString(context);
+    if (now.hour < 18) return 'dashboard.greeting_afternoon'.getString(context);
+    return 'dashboard.greeting_evening'.getString(context);
   }
 
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
@@ -63,7 +66,7 @@ class DashboardScreen extends ConsumerWidget {
               _HeroGreetingCard(
                 name: name,
                 email: email,
-                greeting: greetingFor(DateTime.now()),
+                greeting: greetingFor(DateTime.now(), context),
               ),
               const SizedBox(height: 16),
               const _SyncStatusCard(),
@@ -83,7 +86,7 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _StatCard(
-                        label: 'Overdue',
+                        label: 'dashboard.stat_overdue'.getString(context),
                         icon: LucideIcons.circleAlert,
                         value: state.overdueCount,
                         pending: !state.loaded,
@@ -95,7 +98,7 @@ class DashboardScreen extends ConsumerWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _StatCard(
-                        label: 'Due Today',
+                        label: 'dashboard.stat_due_today'.getString(context),
                         icon: LucideIcons.clock,
                         value: state.dueTodayCount,
                         pending: !state.loaded,
@@ -128,9 +131,9 @@ class DashboardScreen extends ConsumerWidget {
               const SizedBox(height: 22),
 
               // Section Title: "Today's Active Tasks"
-              const Text(
-                "Today's Active Tasks",
-                style: TextStyle(
+              Text(
+                'dashboard.section_active_tasks'.getString(context),
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: FeColors.ink,
@@ -201,24 +204,39 @@ class _TopBar extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Dashboard',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: FeColors.ink,
-                  letterSpacing: -0.5,
-                  height: 1.1,
+              // Dashboard's top bar carries four fixed-width circular
+              // buttons (language toggle, calendar, notifications, logout)
+              // instead of the two that Orders/Overview leave room for, so
+              // the same 26px title that fits fine on those screens can run
+              // out of room here on narrower phones and wrap mid-word
+              // ("Dashboar" / "d"). Same fix as `_WorkOrdersActionCard`
+              // below: keep the title on one line and let it scale down
+              // rather than wrap, instead of shrinking the base size (which
+              // would make it read smaller than every other screen's title
+              // on normal-width phones where it already fits).
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'dashboard.title'.getString(context),
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: FeColors.ink,
+                    letterSpacing: -0.5,
+                    height: 1.1,
+                  ),
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
-                "Here's what's happening today",
-                style: TextStyle(
+                'dashboard.subtitle'.getString(context),
+                style: const TextStyle(
                   fontSize: 13.5,
                   color: FeColors.ink2,
                   fontWeight: FontWeight.w400,
@@ -228,25 +246,85 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
+        const _LanguageSwitcherButton(),
+        const SizedBox(width: 8),
         _CircleActionButton(
           icon: LucideIcons.calendarDays,
-          tooltip: 'Calendar',
+          tooltip: 'common.calendar'.getString(context),
           onTap: onCalendar,
         ),
         const SizedBox(width: 8),
         _CircleActionButton(
           icon: LucideIcons.bell,
-          tooltip: 'Notifications',
+          tooltip: 'common.notifications'.getString(context),
           badge: unseenNotifications,
           onTap: onNotifications,
         ),
         const SizedBox(width: 8),
         _CircleActionButton(
           icon: LucideIcons.logOut,
-          tooltip: 'Log Out',
+          tooltip: 'common.log_out'.getString(context),
           onTap: onLogout,
         ),
       ],
+    );
+  }
+}
+
+/// EN/AR toggle placed right next to the notifications bell. A single tap
+/// flips to the other language via [localeControllerProvider] — the single
+/// source of truth for the active language (see state/locale_controller.dart
+/// for why reading/writing through the FlutterLocalization singleton
+/// directly, as this used to, let the choice silently revert to English
+/// after switching bottom-nav tabs). [FlutterLocalization.translate] still
+/// persists the choice itself under the hood, so it survives an app restart
+/// with no extra storage code here.
+class _LanguageSwitcherButton extends ConsumerWidget {
+  const _LanguageSwitcherButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(localeControllerProvider);
+    final next = current == AppLocales.english
+        ? AppLocales.arabic
+        : AppLocales.english;
+    final label = current.toUpperCase();
+
+    return Material(
+      color: FeColors.panel,
+      shape: const CircleBorder(),
+      elevation: 0,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: () => ref.read(localeControllerProvider.notifier).set(next),
+        child: Tooltip(
+          message: 'common.language'.getString(context),
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: FeColors.ink,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -604,9 +682,9 @@ class _ProgressTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
-            'Progress',
-            style: TextStyle(
+          Text(
+            'dashboard.stat_progress'.getString(context),
+            style: const TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: Color(0xFF64748B),
@@ -740,9 +818,9 @@ class _ScanQrActionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Text(
-                      'Scan QR',
-                      style: TextStyle(
+                    Text(
+                      'dashboard.action_scan_qr'.getString(context),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15.5,
                         fontWeight: FontWeight.w700,
@@ -820,14 +898,14 @@ class _WorkOrdersActionCard extends StatelessWidget {
                     // wider than the Inter metrics this card was tuned
                     // against, and "Work Orders" no longer fits next to the
                     // arrow button without shrinking slightly.
-                    const Flexible(
+                    Flexible(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'Work Orders',
+                          'dashboard.action_work_orders'.getString(context),
                           maxLines: 1,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: FeColors.ink,
                             fontSize: 15.5,
                             fontWeight: FontWeight.w700,
@@ -907,20 +985,20 @@ class _ActiveTasksEmptyCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'No active tasks for today',
+          Text(
+            'dashboard.empty_title'.getString(context),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: Color(0xFF334155),
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Great job!',
+          Text(
+            'dashboard.empty_subtitle'.getString(context),
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 14,
               color: Color(0xFF94A3B8),
               fontWeight: FontWeight.w500,

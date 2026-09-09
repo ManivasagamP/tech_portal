@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:uuid/uuid.dart';
 
 import '../core/capture/capture_services.dart';
@@ -293,6 +295,64 @@ class ChecklistRepository {
         ],
       },
       label: 'Add other task',
+    );
+  }
+
+  /// Digital-signature sign-off (2026-09-09): appended to the record the same
+  /// way `addOtherItem` above appends an "Other" item — same PUT to the
+  /// record entity, same full-`checklists`-array replace — because the
+  /// server's `checklistCloseGuard.ts` reads the signature out of that same
+  /// JSON array, not a new column. The one difference from `addOtherItem` is
+  /// the image: the drawn PNG rides through the SAME `QueuedAttachment`
+  /// placeholder-substitution path every other attachment in this app uses
+  /// (see `sync_client.dart`), so a signature captured with no signal queues
+  /// and uploads on reconnect exactly like a checklist photo or voice note —
+  /// it must not become a direct/non-queued upload, which would regress the
+  /// offline guarantee for this one field.
+  ///
+  /// Field shape matches the web's `handleSaveSignature`
+  /// (`maintenance-checklist-v2.tsx`) exactly: `isCompleted`, `isOther`,
+  /// `isSignature`, `signatureUrl`, `signerName`, `signedAt`.
+  Future<SyncedWrite> addSignatureItem(
+    OrderType type,
+    MaintenanceRecord record, {
+    required Uint8List pngBytes,
+    String? signerName,
+  }) {
+    final placeholder = '__pending_signature_${_uuid.v4()}__';
+    final existing = record.raw['checklists'];
+    final name = signerName?.trim();
+
+    return _sync.syncRequest(
+      'put',
+      '/api/fm/${type.entityPath}/${record.id}',
+      entityType: type.name,
+      entityId: record.id,
+      data: {
+        'checklists': [
+          ...existing is List ? existing : const [],
+          {
+            'id': 'signature-${DateTime.now().millisecondsSinceEpoch}',
+            'name': 'Technician Signature',
+            'task': 'Technician Signature',
+            'description':
+                'Digital signature confirming this work order was completed.',
+            'isCompleted': true,
+            'isOther': true,
+            'isSignature': true,
+            'signatureUrl': placeholder,
+            if (name != null && name.isNotEmpty) 'signerName': name,
+            'signedAt': DateTime.now().toUtc().toIso8601String(),
+          },
+        ],
+      },
+      label: 'Technician signature',
+      attachment: QueuedAttachment(
+        bytes: pngBytes,
+        fileName: 'signature.png',
+        placeholder: placeholder,
+        field: 'image',
+      ),
     );
   }
 

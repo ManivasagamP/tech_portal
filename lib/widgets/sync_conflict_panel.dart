@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -36,7 +37,7 @@ class SyncConflictPanel extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: AppText.bodyMedium(
-                    'Some changes could not be saved',
+                    'widgets.sync_conflict_title'.getString(context),
                     color: FeColors.danger,
                     weight: FontWeight.w700,
                   ),
@@ -47,7 +48,7 @@ class SyncConflictPanel extends ConsumerWidget {
                     bus.notify();
                   },
                   style: TextButton.styleFrom(foregroundColor: FeColors.danger),
-                  child: const AppText('Dismiss all'),
+                  child: AppText('widgets.dismiss_all'.getString(context)),
                 ),
               ],
             ),

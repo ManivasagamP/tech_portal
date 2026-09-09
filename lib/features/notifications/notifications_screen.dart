@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -60,7 +61,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     return Scaffold(
       backgroundColor: FeColors.page,
       appBar: FeHeader(
-        title: 'Notifications',
+        title: 'common.notifications'.getString(context),
         actions: [
           if (anyUnread)
             TextButton.icon(
@@ -68,7 +69,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   .read(notificationsControllerProvider.notifier)
                   .markAllRead,
               icon: const Icon(LucideIcons.checkCheck, size: 16),
-              label: const AppText('Mark all read'),
+              label: AppText(
+                'notifications.mark_all_read'.getString(context),
+              ),
             ),
         ],
       ),
@@ -78,22 +81,24 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           loading: () => const Center(child: TechSpinner()),
           error: (error, _) => ListView(
             padding: const EdgeInsets.all(16),
-            children: const [
+            children: [
               TechEmptyState(
                 icon: LucideIcons.circleAlert,
-                title: 'Could not load notifications',
-                subtitle: 'Pull down to try again.',
+                title: 'notifications.error_title'.getString(context),
+                subtitle: 'common.pull_down_to_retry'.getString(context),
               ),
             ],
           ),
           data: (data) => data.notifications.isEmpty
               ? ListView(
                   padding: const EdgeInsets.all(16),
-                  children: const [
+                  children: [
                     TechEmptyState(
                       icon: LucideIcons.bell,
-                      title: 'Nothing new',
-                      subtitle: 'Assignments and updates will appear here.',
+                      title: 'notifications.empty_title'.getString(context),
+                      subtitle: 'notifications.empty_subtitle'.getString(
+                        context,
+                      ),
                     ),
                   ],
                 )

@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_localization/flutter_localization.dart';
+
 import '../../domain/checklist.dart';
 
 /// Port of the web `lib/checklist-status.ts`. Every rule here also runs on the
@@ -9,7 +12,21 @@ enum ChecklistSummaryState {
   completed('Completed');
 
   const ChecklistSummaryState(this.label);
+
+  /// English fallback / non-UI identifier. Screens should call [displayLabel]
+  /// instead so the summary chip actually translates.
   final String label;
+
+  String displayLabel(BuildContext context) => switch (this) {
+        ChecklistSummaryState.notStarted =>
+          'checklist.status_not_started'.getString(context),
+        ChecklistSummaryState.started =>
+          'checklist.status_started'.getString(context),
+        ChecklistSummaryState.paused =>
+          'checklist.status_paused'.getString(context),
+        ChecklistSummaryState.completed =>
+          'checklist.status_completed'.getString(context),
+      };
 }
 
 class ChecklistSummary {
@@ -91,6 +108,21 @@ bool isChecklistFullyComplete(List<ChecklistItem> items) {
 /// zero checklist activity, even when `checklistMandatory` is false.
 bool hasAnyChecklistCompleted(List<ChecklistItem> items) =>
     items.any((i) => i.isCompleted);
+
+/// A technician signature is required to close ANY record, unconditionally —
+/// mirrors the server's `checklistCloseGuard.ts` (2026-09-09) and the web's
+/// `hasRequiredSignature` in `lib/checklist-status.ts` exactly: `isSignature`
+/// item, itself marked complete.
+bool hasRequiredSignature(List<ChecklistItem> items) =>
+    items.any((i) => i.isSignature && i.isCompleted);
+
+/// The one synthetic signature item, if a technician has already signed.
+ChecklistItem? findSignatureItem(List<ChecklistItem> items) {
+  for (final item in items) {
+    if (item.isSignature) return item;
+  }
+  return null;
+}
 
 /// Earliest start across every item's sessions. Technicians work items out of
 /// order, so a record started when its FIRST checklist item did, not when a

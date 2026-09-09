@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -82,7 +83,7 @@ class FeHeader extends StatelessWidget implements PreferredSizeWidget {
           (showBack
               ? IconButton(
                   icon: const Icon(LucideIcons.arrowLeft),
-                  tooltip: 'Back',
+                  tooltip: 'common.back'.getString(context),
                   onPressed: () => context.pop(),
                 )
               : null),

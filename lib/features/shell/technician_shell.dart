@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -15,17 +16,20 @@ import '../../widgets/offline_banner.dart';
 import '../../widgets/sync_conflict_panel.dart';
 
 class _NavItem {
-  const _NavItem(this.label, this.icon);
-  final String label;
+  const _NavItem(this.labelKey, this.icon);
+
+  /// Translation key for the tab label — resolved at build time via
+  /// [labelKey].getString(context) so it follows the active locale.
+  final String labelKey;
   final IconData icon;
 }
 
 const _navItems = <_NavItem>[
-  _NavItem('Dashboard', LucideIcons.house),
-  _NavItem('Overview', LucideIcons.chartColumn),
-  _NavItem('Orders', LucideIcons.clipboardList),
-  _NavItem('Assignments', LucideIcons.clipboardCheck),
-  _NavItem('Profile', LucideIcons.user),
+  _NavItem('common.dashboard', LucideIcons.house),
+  _NavItem('common.overview', LucideIcons.chartColumn),
+  _NavItem('common.orders', LucideIcons.clipboardList),
+  _NavItem('common.assignments', LucideIcons.clipboardCheck),
+  _NavItem('common.profile', LucideIcons.user),
 ];
 
 /// Owns the whole chrome: offline banner, conflict panel, 5-item bottom bar.
@@ -55,14 +59,14 @@ class _TechnicianShellState extends ConsumerState<TechnicianShell> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const AppText('Session Expired'),
-        content: const AppText(
-          'Your session has expired. Please sign in again to continue.',
+        title: AppText('shell.session_expired_title'.getString(context)),
+        content: AppText(
+          'shell.session_expired_message'.getString(context),
         ),
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const AppText('Sign in'),
+            child: AppText('common.sign_in'.getString(context)),
           ),
         ],
       ),
@@ -193,7 +197,7 @@ class _NavButton extends StatelessWidget {
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   letterSpacing: 0.25,
                 ),
-                child: AppText(item.label, maxLines: 1),
+                child: AppText(item.labelKey.getString(context), maxLines: 1),
               ),
             ),
           ],

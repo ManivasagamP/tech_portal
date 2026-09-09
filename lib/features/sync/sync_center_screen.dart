@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -53,18 +54,18 @@ class _SyncCenterScreenState extends ConsumerState<SyncCenterScreen> {
 
     return Scaffold(
       backgroundColor: FeColors.page,
-      appBar: const FeHeader(title: 'Pending Sync'),
+      appBar: FeHeader(title: 'sync.pending_sync_title'.getString(context)),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(pendingMutationsProvider.future),
         child: mutationsAsync.when(
           loading: () => const Center(child: TechSpinner()),
           error: (error, _) => ListView(
             padding: const EdgeInsets.all(16),
-            children: const [
+            children: [
               TechEmptyState(
                 icon: LucideIcons.circleAlert,
-                title: 'Could not load the sync queue',
-                subtitle: 'Pull down to try again.',
+                title: 'sync.load_error_title'.getString(context),
+                subtitle: 'common.pull_to_retry'.getString(context),
               ),
             ],
           ),
@@ -82,11 +83,19 @@ class _SyncCenterScreenState extends ConsumerState<SyncCenterScreen> {
                       Expanded(
                         child: AppText.bodyMedium(
                           progress != null
-                              ? 'Syncing ${progress.completed} of ${progress.total}…'
+                              ? context.formatString(
+                                  'sync.syncing_progress'.getString(context),
+                                  [progress.completed, progress.total],
+                                )
                               : mutations.isEmpty
-                              ? 'Nothing waiting to sync'
-                              : '${mutations.length} item'
-                                    '${mutations.length == 1 ? '' : 's'} waiting to sync',
+                              ? 'sync.nothing_waiting'.getString(context)
+                              : context.formatString(
+                                  (mutations.length == 1
+                                          ? 'sync.items_waiting_one'
+                                          : 'sync.items_waiting_other')
+                                      .getString(context),
+                                  [mutations.length],
+                                ),
                           weight: FontWeight.w700,
                         ),
                       ),
@@ -102,7 +111,7 @@ class _SyncCenterScreenState extends ConsumerState<SyncCenterScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const AppText('Sync all'),
+                            : AppText('sync.sync_all'.getString(context)),
                       ),
                     ],
                   ),
@@ -122,12 +131,12 @@ class _SyncCenterScreenState extends ConsumerState<SyncCenterScreen> {
                   ),
                 const SizedBox(height: 16),
                 if (mutations.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: TechEmptyState(
                       icon: LucideIcons.cloudUpload,
-                      title: 'All caught up',
-                      subtitle: 'Nothing is waiting to sync right now.',
+                      title: 'sync.all_caught_up_title'.getString(context),
+                      subtitle: 'sync.all_caught_up_subtitle'.getString(context),
                     ),
                   )
                 else
@@ -218,7 +227,7 @@ class _GroupHeader extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: AppText.labelMedium(
-                  group.reference ?? 'Other changes',
+                  group.reference ?? 'sync.other_changes'.getString(context),
                   color: FeColors.ink2,
                 ),
               ),
@@ -271,9 +280,17 @@ class _MutationRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 AppText.bodySmall(
                   mutation.attempts > 0
-                      ? 'Queued ${formatDateTimeShort(mutation.createdAt)} '
-                            '· retried ${mutation.attempts}×'
-                      : 'Queued ${formatDateTimeShort(mutation.createdAt)}',
+                      ? context.formatString(
+                          'sync.queued_retried'.getString(context),
+                          [
+                            formatDateTimeShort(mutation.createdAt),
+                            mutation.attempts,
+                          ],
+                        )
+                      : context.formatString(
+                          'sync.queued'.getString(context),
+                          [formatDateTimeShort(mutation.createdAt)],
+                        ),
                 ),
               ],
             ),
@@ -293,7 +310,7 @@ class _MutationRow extends StatelessWidget {
                       width: 14,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const AppText('Sync now'),
+                  : AppText('sync.sync_now'.getString(context)),
             ),
           ),
         ],

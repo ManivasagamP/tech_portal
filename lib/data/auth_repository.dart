@@ -24,8 +24,9 @@ class AuthRepository {
       data: {'username': username, 'password': password},
     );
     final body = response.data;
-    if (body is! Map)
+    if (body is! Map) {
       throw const UnknownFailure('Sign-in failed. Please try again.');
+    }
 
     final token = body['token']?.toString();
     final technician = body['technician'];

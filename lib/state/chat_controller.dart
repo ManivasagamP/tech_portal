@@ -69,15 +69,26 @@ class ChatController extends FamilyNotifier<ChatState, OrderKey> {
     }
   }
 
-  Future<void> send(String text) async {
+  Future<void> send(
+    String text, {
+    List<String> images = const [],
+    String? audio,
+  }) async {
     final message = text.trim();
-    if (message.isEmpty || state.sending) return;
+    // Empty text is fine as long as there's an image or a voice note — the
+    // server transcribes/reads the attachment itself (see
+    // technicianChecklistAiController.ts). Only block when there is
+    // genuinely nothing to send.
+    final hasContent = message.isNotEmpty || images.isNotEmpty || audio != null;
+    if (!hasContent || state.sending) return;
 
     final question = ChatMessage(
       id: 'local-${DateTime.now().microsecondsSinceEpoch}',
       content: message,
       fromTechnician: true,
       sentAt: DateTime.now(),
+      images: images,
+      audio: audio,
     );
     final placeholder = ChatMessage(
       id: 'pending-${question.id}',
@@ -98,6 +109,8 @@ class ChatController extends FamilyNotifier<ChatState, OrderKey> {
         sessionId: _sessionId,
         type: arg.type,
         recordId: arg.id,
+        images: images,
+        audio: audio,
       );
       _replacePlaceholder(placeholder, reply.content, reply.messageId);
     } catch (_) {

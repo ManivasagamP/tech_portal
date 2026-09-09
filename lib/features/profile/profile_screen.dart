@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -49,9 +50,9 @@ class ProfileScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Profile',
-                    style: TextStyle(
+                  Text(
+                    'profile.title'.getString(context),
+                    style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
                       color: FeColors.ink,
@@ -104,9 +105,9 @@ class ProfileScreen extends ConsumerWidget {
               const SizedBox(height: 22),
 
               // Performance Section
-              const Text(
-                'Performance',
-                style: TextStyle(
+              Text(
+                'profile.performance_section'.getString(context),
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: FeColors.ink,
@@ -121,19 +122,21 @@ class ProfileScreen extends ConsumerWidget {
                   child: TechSpinner(),
                 )
               else if (metrics == null)
-                const TechEmptyState(
+                TechEmptyState(
                   icon: LucideIcons.chartColumn,
-                  title: 'Figures are not available',
-                  subtitle: 'Pull down to try again.',
+                  title: 'profile.metrics_unavailable_title'.getString(
+                    context,
+                  ),
+                  subtitle: 'common.pull_down_to_retry'.getString(context),
                 )
               else
                 _PerformanceMetrics(metrics: metrics),
 
               if (profile != null && profile.certifications.isNotEmpty) ...[
                 const SizedBox(height: 22),
-                const Text(
-                  'Certifications',
-                  style: TextStyle(
+                Text(
+                  'profile.certifications_section'.getString(context),
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: FeColors.ink,
@@ -152,8 +155,12 @@ class ProfileScreen extends ConsumerWidget {
               // Account & System Info Card
               _AccountDetailsCard(
                 technicianId: session?.technicianId ?? '—',
-                partnerRole: session?.partnerRole ?? 'in-house',
-                aiAssistant: permissions.isAiAgent ? 'Enabled' : 'Disabled',
+                partnerRole:
+                    session?.partnerRole ??
+                    'profile.partner_role_default'.getString(context),
+                aiAssistant: permissions.isAiAgent
+                    ? 'common.enabled'.getString(context)
+                    : 'common.disabled'.getString(context),
               ),
               const SizedBox(height: 18),
 
@@ -173,18 +180,18 @@ class ProfileScreen extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: const Color(0xFFFECACA)),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
+                          const Icon(
                             LucideIcons.logOut,
                             size: 18,
                             color: Color(0xFFEF4444),
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           Text(
-                            'Sign Out',
-                            style: TextStyle(
+                            'common.sign_out_title'.getString(context),
+                            style: const TextStyle(
                               color: Color(0xFFEF4444),
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -328,22 +335,28 @@ class _ProfileHeroCard extends StatelessWidget {
                 runSpacing: 12,
                 children: [
                   _FactPill(
-                    label: 'Department',
-                    value: department ?? 'Maintenance',
+                    label: 'profile.department_label'.getString(context),
+                    value:
+                        department ??
+                        'profile.department_default'.getString(context),
                   ),
                   _FactPill(
-                    label: 'Status',
-                    value: status ?? 'Active',
+                    label: 'profile.status_label'.getString(context),
+                    value:
+                        status ?? 'profile.status_default'.getString(context),
                     isStatus: true,
                   ),
                   _FactPill(
-                    label: 'Experience',
-                    value: '${_trimZero(experienceYears ?? 0)} years',
+                    label: 'profile.experience_label'.getString(context),
+                    value: context.formatString(
+                      'profile.experience_years_value'.getString(context),
+                      [_trimZero(experienceYears ?? 0)],
+                    ),
                   ),
                   _FactPill(
-                    label: 'Specialization',
+                    label: 'profile.specialization_label'.getString(context),
                     value: specialization.isEmpty
-                        ? 'General'
+                        ? 'profile.specialization_default'.getString(context)
                         : specialization.join(', '),
                   ),
                 ],
@@ -442,18 +455,18 @@ class _PerformanceMetrics extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Total Orders',
-                          style: TextStyle(
+                          'profile.total_orders_label'.getString(context),
+                          style: const TextStyle(
                             fontSize: 13,
                             color: Color(0xFF64748B),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        Icon(
+                        const Icon(
                           LucideIcons.trendingUp,
                           size: 18,
                           color: Color(0xFF0284C7),
@@ -471,9 +484,12 @@ class _PerformanceMetrics extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
-                      'All-time completed',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                    Text(
+                      'profile.all_time_completed'.getString(context),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                      ),
                     ),
                   ],
                 ),
@@ -488,9 +504,9 @@ class _PerformanceMetrics extends StatelessWidget {
           children: [
             Expanded(
               child: _MetricCard(
-                label: 'Completed',
+                label: 'profile.completed_label'.getString(context),
                 value: '${metrics.completedOrders}',
-                caption: 'Finished tasks',
+                caption: 'profile.finished_tasks_caption'.getString(context),
                 icon: LucideIcons.circleCheck,
                 iconColor: const Color(0xFF10B981),
                 badgeBg: const Color(0xFFDCFCE7),
@@ -500,9 +516,12 @@ class _PerformanceMetrics extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _MetricCard(
-                label: 'Avg. Resolution',
-                value: '${_trimZero(metrics.avgResolutionTime)} hrs',
-                caption: 'Per order',
+                label: 'profile.avg_resolution_label'.getString(context),
+                value: context.formatString(
+                  'profile.avg_resolution_value'.getString(context),
+                  [_trimZero(metrics.avgResolutionTime)],
+                ),
+                caption: 'profile.per_order_caption'.getString(context),
                 icon: LucideIcons.clock,
                 iconColor: const Color(0xFF0284C7),
                 badgeBg: const Color(0xFFDBEAFE),
@@ -516,9 +535,12 @@ class _PerformanceMetrics extends StatelessWidget {
           children: [
             Expanded(
               child: _MetricCard(
-                label: 'Quality Score',
-                value: '${_trimZero(metrics.qualityScore)}/5',
-                caption: 'Rating',
+                label: 'profile.quality_score_label'.getString(context),
+                value: context.formatString(
+                  'profile.score_out_of_5'.getString(context),
+                  [_trimZero(metrics.qualityScore)],
+                ),
+                caption: 'profile.rating_caption'.getString(context),
                 icon: LucideIcons.star,
                 iconColor: const Color(0xFFF59E0B),
                 badgeBg: const Color(0xFFFEF3C7),
@@ -528,9 +550,14 @@ class _PerformanceMetrics extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _MetricCard(
-                label: 'Satisfaction',
-                value: '${_trimZero(metrics.customerSatisfaction)}/5',
-                caption: 'Customer feedback',
+                label: 'profile.satisfaction_label'.getString(context),
+                value: context.formatString(
+                  'profile.score_out_of_5'.getString(context),
+                  [_trimZero(metrics.customerSatisfaction)],
+                ),
+                caption: 'profile.customer_feedback_caption'.getString(
+                  context,
+                ),
                 icon: LucideIcons.smile,
                 iconColor: const Color(0xFF8B5CF6),
                 badgeBg: const Color(0xFFEDE9FE),
@@ -722,10 +749,16 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
     setState(() => _busy = false);
 
     final message = result.offline
-        ? 'No connection — nothing could be downloaded.'
+        ? 'profile.download_offline_message'.getString(context)
         : result.failed > 0
-        ? 'Saved ${result.saved} jobs. ${result.failed} could not be downloaded.'
-        : 'Saved ${result.saved} jobs for offline use.';
+        ? context.formatString(
+            'profile.download_partial_message'.getString(context),
+            [result.saved, result.failed],
+          )
+        : context.formatString(
+            'profile.download_success_message'.getString(context),
+            [result.saved],
+          );
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
@@ -749,17 +782,17 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(
+              const Icon(
                 LucideIcons.cloudDownload,
                 size: 20,
                 color: Color(0xFF0284C7),
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Text(
-                'Download My Work',
-                style: TextStyle(
+                'profile.download_my_work_title'.getString(context),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: FeColors.ink,
@@ -768,9 +801,9 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
             ],
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Save your assigned jobs to this phone so they open even without a signal.',
-            style: TextStyle(
+          Text(
+            'profile.download_my_work_description'.getString(context),
+            style: const TextStyle(
               fontSize: 13,
               color: Color(0xFF64748B),
               height: 1.4,
@@ -813,7 +846,11 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
                             ),
                       const SizedBox(width: 8),
                       Text(
-                        _busy ? 'Downloading…' : 'Download for Offline Use',
+                        _busy
+                            ? 'profile.downloading_label'.getString(context)
+                            : 'profile.download_button_label'.getString(
+                                context,
+                              ),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -862,11 +899,20 @@ class _AccountDetailsCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _DetailRow(label: 'Reference ID', value: technicianId),
+          _DetailRow(
+            label: 'profile.reference_id_label'.getString(context),
+            value: technicianId,
+          ),
           const Divider(height: 16, color: Color(0xFFF1F5F9)),
-          _DetailRow(label: 'Partner Role', value: partnerRole),
+          _DetailRow(
+            label: 'profile.partner_role_label'.getString(context),
+            value: partnerRole,
+          ),
           const Divider(height: 16, color: Color(0xFFF1F5F9)),
-          _DetailRow(label: 'AI Assistant', value: aiAssistant),
+          _DetailRow(
+            label: 'profile.ai_assistant_label'.getString(context),
+            value: aiAssistant,
+          ),
         ],
       ),
     );

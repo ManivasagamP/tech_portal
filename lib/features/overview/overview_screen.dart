@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -32,26 +33,34 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
     OrderType.annual: [Color(0xFFFBBF24), Color(0xFFD97706)],
   };
 
-  static String _totalLabel(OrderType type) => switch (type) {
-    OrderType.workOrder => 'Work Orders',
-    OrderType.preventive => 'Preventive Tasks',
-    OrderType.reactive => 'Reactive Requests',
-    OrderType.annual => 'Annual Contracts',
-  };
+  static String _totalLabel(BuildContext context, OrderType type) =>
+      switch (type) {
+        OrderType.workOrder =>
+          'overview.total_work_orders'.getString(context),
+        OrderType.preventive =>
+          'overview.total_preventive_tasks'.getString(context),
+        OrderType.reactive =>
+          'overview.total_reactive_requests'.getString(context),
+        OrderType.annual =>
+          'overview.total_annual_contracts'.getString(context),
+      };
 
-  static String _tabLabel(OrderType type) => switch (type) {
-    OrderType.workOrder => 'Work Order',
-    OrderType.reactive => 'Reactive',
-    OrderType.preventive => 'Preventive',
-    OrderType.annual => 'Annual',
-  };
+  static String _tabLabel(BuildContext context, OrderType type) =>
+      switch (type) {
+        OrderType.workOrder => 'overview.tab_work_order'.getString(context),
+        OrderType.reactive => 'overview.tab_reactive'.getString(context),
+        OrderType.preventive => 'overview.tab_preventive'.getString(context),
+        OrderType.annual => 'overview.tab_annual'.getString(context),
+      };
 
-  static String _trendLabel(OrderType type) => switch (type) {
-    OrderType.workOrder => 'Work Order Trends',
-    OrderType.reactive => 'Reactive Trends',
-    OrderType.preventive => 'Preventive Trends',
-    OrderType.annual => 'Annual Trends',
-  };
+  static String _trendLabel(BuildContext context, OrderType type) =>
+      switch (type) {
+        OrderType.workOrder => 'overview.trend_work_order'.getString(context),
+        OrderType.reactive => 'overview.trend_reactive'.getString(context),
+        OrderType.preventive =>
+          'overview.trend_preventive'.getString(context),
+        OrderType.annual => 'overview.trend_annual'.getString(context),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -91,10 +100,10 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
                   child: TechSpinner(),
                 )
               else if (insights.hasError)
-                const TechEmptyState(
+                TechEmptyState(
                   icon: LucideIcons.circleAlert,
-                  title: 'Could not load your figures',
-                  subtitle: 'Pull down to try again.',
+                  title: 'overview.load_error_title'.getString(context),
+                  subtitle: 'common.pull_to_retry'.getString(context),
                 )
               else ...[
                 // Side-by-side 2 Metric Stat Cards with soft tint gradients
@@ -102,9 +111,9 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
                   children: [
                     Expanded(
                       child: _StatCard(
-                        title: _totalLabel(_tab),
+                        title: _totalLabel(context, _tab),
                         value: insights.requireValue.totalsFor(_tab).total,
-                        caption: 'This Year',
+                        caption: 'overview.stat_this_year'.getString(context),
                         icon: LucideIcons.trendingUp,
                         iconColor: const Color(0xFF10B981),
                         iconBackground: const Color(0xFFDCFCE7),
@@ -114,9 +123,11 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _StatCard(
-                        title: 'Work In Progress',
+                        title: 'overview.stat_work_in_progress'.getString(
+                          context,
+                        ),
                         value: insights.requireValue.inProgressFor(_tab),
-                        caption: 'This Month',
+                        caption: 'overview.stat_this_month'.getString(context),
                         icon: LucideIcons.activity,
                         iconColor: const Color(0xFF0284C7),
                         iconBackground: const Color(0xFFDBEAFE),
@@ -129,7 +140,7 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
 
                 // Trends Chart Card
                 _TrendCard(
-                  title: _trendLabel(_tab),
+                  title: _trendLabel(context, _tab),
                   trends: insights.requireValue.monthlyTrends,
                   type: _tab,
                   gradient: gradient,
@@ -161,13 +172,13 @@ class _TopBar extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Analytics Overview',
-                style: TextStyle(
+                'overview.title'.getString(context),
+                style: const TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w800,
                   color: FeColors.ink,
@@ -175,10 +186,10 @@ class _TopBar extends StatelessWidget {
                   height: 1.1,
                 ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
-                'Track and analyze your work orders',
-                style: TextStyle(
+                'overview.subtitle'.getString(context),
+                style: const TextStyle(
                   fontSize: 13.5,
                   color: FeColors.ink2,
                   fontWeight: FontWeight.w400,
@@ -190,13 +201,13 @@ class _TopBar extends StatelessWidget {
         const SizedBox(width: 8),
         _CircleActionButton(
           icon: LucideIcons.calendarDays,
-          tooltip: 'Calendar',
+          tooltip: 'common.calendar'.getString(context),
           onTap: onCalendar,
         ),
         const SizedBox(width: 8),
         _CircleActionButton(
           icon: LucideIcons.bell,
-          tooltip: 'Notifications',
+          tooltip: 'common.notifications'.getString(context),
           badge: unseenNotifications,
           onTap: onNotifications,
         ),
@@ -289,7 +300,7 @@ class _TypeTabs extends StatelessWidget {
 
   final OrderType selected;
   final ValueChanged<OrderType> onSelect;
-  final String Function(OrderType) label;
+  final String Function(BuildContext, OrderType) label;
 
   static const _order = [
     OrderType.workOrder,
@@ -342,7 +353,7 @@ class _TypeTabs extends StatelessWidget {
                         : null,
                   ),
                   child: Text(
-                    label(type),
+                    label(context, type),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -513,19 +524,19 @@ class _TrendCard extends StatelessWidget {
                   color: const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Monthly',
-                      style: TextStyle(
+                      'overview.chart_period_monthly'.getString(context),
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: Color(0xFF475569),
                       ),
                     ),
-                    SizedBox(width: 4),
-                    Icon(
+                    const SizedBox(width: 4),
+                    const Icon(
                       LucideIcons.chevronDown,
                       size: 14,
                       color: Color(0xFF475569),
@@ -539,10 +550,10 @@ class _TrendCard extends StatelessWidget {
           SizedBox(
             height: 240,
             child: trends.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'No activity recorded this year.',
-                      style: TextStyle(
+                      'overview.chart_no_activity'.getString(context),
+                      style: const TextStyle(
                         color: FeColors.ink2,
                         fontSize: 13,
                       ),
@@ -560,7 +571,10 @@ class _TrendCard extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFF1F5F9)),
               ),
               child: Text(
-                'Monthly Order Volume (${DateTime.now().year})',
+                context.formatString(
+                  'overview.chart_volume_caption'.getString(context),
+                  [DateTime.now().year],
+                ),
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/capture/capture_services.dart';
@@ -246,6 +248,43 @@ class ChecklistController extends FamilyNotifier<ChecklistState, OrderKey> {
       return const ActionOutcome.failed('Failed to add other task.');
     } finally {
       state = state.copyWith(addingOther: false);
+    }
+  }
+
+  /// Digital-signature sign-off (2026-09-09) — appends the drawn signature as
+  /// one more checklist item via the SAME call path [addOther] above uses
+  /// (`ChecklistRepository.addSignatureItem` mirrors `addOtherItem`), so it
+  /// rides the offline queue exactly like every other write in this
+  /// controller. See `checklistCloseGuard.ts` (server) for why the signature
+  /// lives inside `checklists` instead of a new column.
+  Future<ActionOutcome?> addSignature({
+    required Uint8List pngBytes,
+    String? signerName,
+  }) async {
+    final record = ref
+        .read(orderDetailControllerProvider(arg))
+        .valueOrNull
+        ?.record;
+    if (record == null) return null;
+
+    try {
+      final write = await _repository.addSignatureItem(
+        arg.type,
+        record,
+        pngBytes: pngBytes,
+        signerName: signerName,
+      );
+      if (write.synced) {
+        await ref.read(orderDetailControllerProvider(arg).notifier).refresh();
+        return null;
+      }
+      return const ActionOutcome.queued();
+    } on HttpFailure catch (e) {
+      return ActionOutcome.failed(
+        e.message.isEmpty ? 'Failed to save signature.' : e.message,
+      );
+    } catch (_) {
+      return const ActionOutcome.failed('Failed to save signature.');
     }
   }
 }
