@@ -272,6 +272,6 @@ abstract final class AppTheme {
         color: onSurfaceMuted,
       ),
     );
-    return GoogleFonts.montserratTextTheme(base);
+    return GoogleFonts.poppinsTextTheme(base);
   }
 }

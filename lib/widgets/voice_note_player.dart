@@ -214,7 +214,6 @@ class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
                 : total),
             style: theme.textTheme.labelSmall?.copyWith(
               color: FeColors.ink2,
-              fontFamily: 'monospace',
             ),
           ),
         ],

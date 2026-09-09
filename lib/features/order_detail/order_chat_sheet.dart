@@ -314,7 +314,6 @@ class _AssistantMarkdown extends StatelessWidget {
           listBullet: _body,
           blockquote: _body,
           code: _body.copyWith(
-            fontFamily: 'monospace',
             fontSize: 12,
             backgroundColor: Colors.transparent,
           ),

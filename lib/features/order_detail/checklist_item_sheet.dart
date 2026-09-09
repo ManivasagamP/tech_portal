@@ -327,7 +327,6 @@ class _TimeLog extends StatelessWidget {
                 child: AppText(
                   'Total: ${formatMinutesAsHours(item.timeSpent ?? 0)}',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    fontFamily: 'monospace',
                     color: FeColors.primary,
                     fontWeight: FontWeight.w700,
                   ),
@@ -424,7 +423,6 @@ class _SessionRow extends StatelessWidget {
                         '${session.endTime == null ? '' : ' → ${formatSessionTime(session.endTime!)}'}',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: FeColors.ink2,
-                fontFamily: 'monospace',
               ),
             ),
             if (hasGeo) ...[
@@ -450,9 +448,6 @@ class _SessionRow extends StatelessWidget {
                       style: theme.textTheme.labelSmall?.copyWith(
                         fontSize: 10,
                         color: FeColors.ink2,
-                        fontFamily: session.placeLabel == null
-                            ? 'monospace'
-                            : null,
                       ),
                     ),
                   ),

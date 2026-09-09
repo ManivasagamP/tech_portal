@@ -125,7 +125,6 @@ class _TimeTrackerCardState extends State<TimeTrackerCard> {
                   Text(
                     formatElapsed(_elapsed),
                     style: const TextStyle(
-                      fontFamily: 'monospace',
                       fontWeight: FontWeight.w800,
                       fontSize: 26,
                       color: Color(0xFF0284C7),

@@ -322,7 +322,6 @@ class _LocationPanel extends StatelessWidget {
                     '${location!.latitude.toStringAsFixed(4)}, '
                     '${location!.longitude.toStringAsFixed(4)}',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
                       color: FeColors.success,
                     ),
                   ),
