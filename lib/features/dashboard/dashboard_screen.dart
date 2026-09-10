@@ -112,7 +112,7 @@ class DashboardScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
 
-              // Action Cards Row: Scan QR & Work Orders
+              // Action Cards Row: Scan QR & Orders
               Row(
                 children: [
                   Expanded(
@@ -818,14 +818,27 @@ class _ScanQrActionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      'dashboard.action_scan_qr'.getString(context),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w700,
+                    // Flexible+FittedBox rather than a bare Text — Montserrat
+                    // runs wider than the Inter metrics this card was tuned
+                    // against, and "Scan QR" no longer fits next to the arrow
+                    // button without shrinking slightly — same fix already
+                    // applied to `_WorkOrdersActionCard`'s label below.
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'dashboard.action_scan_qr'.getString(context),
+                          maxLines: 1,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 6),
                     Container(
                       width: 28,
                       height: 28,

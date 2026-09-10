@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../features/calendar/calendar_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/inspection/inspection_form_screen.dart';
+import '../features/inspection/inspection_list_screen.dart';
 import '../features/invites/invites_screen.dart';
 import '../features/login/login_screen.dart';
 import '../features/notifications/notifications_screen.dart';
@@ -30,8 +32,10 @@ abstract final class Routes {
   static const notifications = '/notifications';
   static const scan = '/scan';
   static const syncCenter = '/sync';
+  static const inspections = '/inspections';
 
   static String orderDetail(String type, String id) => '/orders/$type/$id';
+  static String inspectionDetail(String id) => '/inspections/$id';
   static String twin(String assetId) => '/twin/$assetId';
 
   /// The built-in browser. The address is a query parameter rather than a path
@@ -134,6 +138,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => OrderDetailScreen(
           orderType: state.pathParameters['type'] ?? 'work-order',
           orderId: state.pathParameters['id'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: Routes.inspections,
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const InspectionListScreen(),
+      ),
+      GoRoute(
+        path: '/inspections/:id',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => InspectionFormScreen(
+          assignmentId: state.pathParameters['id'] ?? '',
         ),
       ),
       GoRoute(

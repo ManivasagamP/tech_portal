@@ -31,6 +31,12 @@ String? routeForNotification(AppNotification notification) {
   // dozen calls just to reach the accept/decline panel at the top of it.
   if (notification.title == 'New assignment invite') return Routes.invites;
 
+  // Inspections aren't an `OrderType` (see `maintenance_record.dart`'s doc
+  // comment) — their detail route lives at `/inspections/:id`, not
+  // `/orders/:type/:id`, so this one entity type is handled before the
+  // four-way order lookup below.
+  if (entityType == 'Inspection') return Routes.inspectionDetail(entityId);
+
   final slug = _slugForEntityType(entityType);
   return slug == null ? null : Routes.orderDetail(slug, entityId);
 }

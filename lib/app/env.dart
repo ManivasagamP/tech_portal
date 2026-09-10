@@ -3,7 +3,7 @@
 abstract final class Env {
   static const defaultApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:5002',
+    defaultValue: 'https://api-test.develop.thefusionapps.com',
   );
 
   /// The Next.js client, not the API. Only two things need it: deciding

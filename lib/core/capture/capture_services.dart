@@ -94,27 +94,57 @@ class PhotoCapture {
     fallbackName: 'face-capture.jpg',
   );
 
-  Future<CapturedPhoto?> takeJobPhoto() => _take(
+  /// [maxWidth] mirrors an inspection photo field's `compressToWidth`
+  /// (web default 1600, `FormRenderer.tsx`'s `downscaleImage`) — kept
+  /// overridable per call rather than hard-coded so a schema-specified
+  /// width can flow through from `InspectionField.compressToWidth`.
+  Future<CapturedPhoto?> takeJobPhoto({double maxWidth = 1600}) => _take(
     source: ImageSource.camera,
     camera: CameraDevice.rear,
     fallbackName: 'photo.jpg',
+    maxWidth: maxWidth,
   );
 
-  Future<CapturedPhoto?> pickFromGallery() =>
-      _take(source: ImageSource.gallery, fallbackName: 'attachment.jpg');
+  Future<CapturedPhoto?> pickFromGallery({double maxWidth = 1600}) => _take(
+    source: ImageSource.gallery,
+    fallbackName: 'attachment.jpg',
+    maxWidth: maxWidth,
+  );
+
+  /// The inspection `file` field type stores whatever bytes the device hands
+  /// back with no resize/re-encode at all — matching the web, which reads
+  /// the picked file straight via `FileReader.readAsDataURL` with no
+  /// compression step (unlike the `photo` field type's `downscaleImage`).
+  Future<CapturedPhoto?> takeRawPhoto() => _take(
+    source: ImageSource.camera,
+    camera: CameraDevice.rear,
+    fallbackName: 'photo.jpg',
+    maxWidth: null,
+    imageQuality: null,
+  );
+
+  Future<CapturedPhoto?> pickRawFromGallery() => _take(
+    source: ImageSource.gallery,
+    fallbackName: 'attachment.jpg',
+    maxWidth: null,
+    imageQuality: null,
+  );
 
   Future<CapturedPhoto?> _take({
     required ImageSource source,
     required String fallbackName,
     CameraDevice camera = CameraDevice.rear,
+    double? maxWidth = 1600,
+    int? imageQuality = 80,
   }) async {
     final file = await _picker.pickImage(
       source: source,
       preferredCameraDevice: camera,
       // Field photos go straight into object storage and are only ever viewed
       // on a phone; full-resolution originals waste the technician's data.
-      maxWidth: 1600,
-      imageQuality: 80,
+      // Null (the `file`-field path) skips this entirely.
+      maxWidth: maxWidth,
+      imageQuality: imageQuality,
     );
     if (file == null) return null;
     return CapturedPhoto(
