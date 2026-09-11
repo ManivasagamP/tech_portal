@@ -3,6 +3,28 @@ import 'dart:typed_data';
 
 import '../core/network/envelope.dart';
 
+/// Which server endpoint/behavior the next message runs through.
+///
+/// [general] is the checklist assistant proper —
+/// `/api/fm/ai/technician-checklist/chat`, hardcoded to "general" mode
+/// server-side (technicianChecklistAiController.ts) and unable to branch into
+/// the other two. [createAsset] and [report] instead go through the shared
+/// facility agent endpoint (`/api/fm/ai/chat`), same as the web portal's
+/// floating agent — same sessionId, so the server still groups every mode
+/// into one conversation (aiController.ts's TECHNICIAN_ORDER_DETAIL_PAGES
+/// module tagging).
+enum ChatMode { general, createAsset, report }
+
+/// Which panel of the assistant sheet is showing.
+///
+/// Mirrors the web facility agent's `view` state (facility-ai-agent.tsx):
+/// a landing screen, the active (always-fresh) thread, and a read-only look
+/// back at an older thread — collapsed here to a fixed pick of the three
+/// [ChatMode]s (this app has no open-ended session list to browse, since
+/// each mode already has exactly one deterministic session per order) rather
+/// than web's separate list-then-detail pair.
+enum ChatSheetView { home, chat, historyList, historyDetail }
+
 /// One line in the per-order assistant thread. The server calls the two sides
 /// "user" and "agent"; anything else it might add is treated as the agent
 /// talking, since that is the safe side to render.

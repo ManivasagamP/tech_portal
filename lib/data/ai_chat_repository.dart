@@ -9,12 +9,27 @@ class AiChatRepository {
 
   final ApiClient _api;
 
-  /// The thread id the server keys history on. Deterministic per order, so
-  /// reopening a job resumes the same conversation instead of starting over —
-  /// and the `technician-checklist:` prefix keeps it out of the general
-  /// facility agent's history.
-  static String sessionIdFor(OrderType type, String recordId) =>
-      'technician-checklist:${type.slug}:$recordId';
+  /// The thread id the server keys history on. Deterministic per order (and,
+  /// for the two agent sub-modes, per mode too — see [ChatMode]) so the
+  /// server-side thread survives across sheet opens even though the sheet
+  /// itself always starts each visit on a clean screen (`ChatSheetView.home`
+  /// / a fresh `messages` list — see `ChatController.openMode`); tapping
+  /// "view past messages" is what pulls that same thread back up read-only.
+  /// The `technician-checklist:` prefix keeps every mode out of the web
+  /// portal's general facility agent history (its own sessions are random
+  /// UUIDs, never this scheme).
+  static String sessionIdFor(
+    OrderType type,
+    String recordId, {
+    ChatMode mode = ChatMode.general,
+  }) {
+    final base = 'technician-checklist:${type.slug}:$recordId';
+    return switch (mode) {
+      ChatMode.general => base,
+      ChatMode.createAsset => '$base:create-asset',
+      ChatMode.report => '$base:report',
+    };
+  }
 
   Future<List<ChatMessage>> history(String sessionId) async {
     final response = await _api.get(
@@ -39,30 +54,46 @@ class AiChatRepository {
   /// straight from `req.body.images` and forwards into `runFacilityAgentTurn`,
   /// which regex-parses that format into Gemini `inlineData` parts. No other
   /// encoding or upload step is needed. [audio] is the same shape but
-  /// singular (see `VoiceRecording.dataUrl`) — one voice note per message.
+  /// singular (see `VoiceRecording.dataUrl`) — one voice note per message, and
+  /// only reaches the server in [ChatMode.general]: `chatWithFacilityAgent`
+  /// (used for the other two modes) never reads `req.body.audio`.
   Future<({String content, String? messageId})> send({
     required String message,
     required String sessionId,
     required OrderType type,
     required String recordId,
+    ChatMode mode = ChatMode.general,
     List<String> images = const [],
     String? audio,
   }) async {
-    final response = await _api.post(
-      '/api/fm/ai/technician-checklist/chat',
-      data: {
-        'message': message,
-        'sessionId': sessionId,
-        'maintenanceId': recordId,
-        // The endpoint validates this against its own vocabulary, which is the
-        // same slug set the detail routes use.
-        'maintenanceType': type.slug,
-        if (images.isNotEmpty) 'images': images,
-        'audio': ?audio,
-      },
-      // Model turns are slow; the default 30 s read timeout cuts them off.
-      receiveTimeout: const Duration(seconds: 90),
-    );
+    final response = mode == ChatMode.general
+        ? await _api.post(
+            '/api/fm/ai/technician-checklist/chat',
+            data: {
+              'message': message,
+              'sessionId': sessionId,
+              'maintenanceId': recordId,
+              // The endpoint validates this against its own vocabulary, which
+              // is the same slug set the detail routes use.
+              'maintenanceType': type.slug,
+              if (images.isNotEmpty) 'images': images,
+              'audio': ?audio,
+            },
+            // Model turns are slow; the default 30 s read timeout cuts them off.
+            receiveTimeout: const Duration(seconds: 90),
+          )
+        : await _api.post(
+            '/api/fm/ai/chat',
+            data: {
+              'message': message,
+              'sessionId': sessionId,
+              'isGeneral': false,
+              'isCreateAsset': mode == ChatMode.createAsset,
+              'isAssetReport': mode == ChatMode.report,
+              if (images.isNotEmpty) 'images': images,
+            },
+            receiveTimeout: const Duration(seconds: 90),
+          );
     final body = response.data;
     return (
       content: body is Map

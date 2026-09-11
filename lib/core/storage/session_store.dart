@@ -80,15 +80,27 @@ class Session {
       );
 }
 
-/// Feature flags from GET /api/auth/config. Only these three reach the technician UI.
+/// Feature flags from GET /api/auth/config. Only these six reach the technician UI.
 class Permissions {
   const Permissions({
     this.isAiAgent = false,
+    this.isCreateAsset = false,
+    this.isAssetReport = false,
+    this.isDigitalTwin,
     this.currencyType,
     this.currencyRates = const {},
   });
 
   final bool isAiAgent;
+  // Sub-actions of the assistant sheet, not standalone screens — same
+  // truthy-default-false polarity as isAiAgent (opt-in), unlike
+  // isDigitalTwin below (opt-out). See order_chat_sheet.dart's mode chips.
+  final bool isCreateAsset;
+  final bool isAssetReport;
+  // Nullable, unlike isAiAgent: matches the web portal's polarity, where an
+  // unset/missing flag (every account created before this gate existed)
+  // keeps View in 3D reachable. Only an explicit `false` blocks it.
+  final bool? isDigitalTwin;
   final String? currencyType;
   final Map<String, double> currencyRates;
 
@@ -103,6 +115,9 @@ class Permissions {
     }
     return Permissions(
       isAiAgent: json['isAiAgent'] == true,
+      isCreateAsset: json['isCreateAsset'] == true,
+      isAssetReport: json['isAssetReport'] == true,
+      isDigitalTwin: json['isDigitalTwin'] as bool?,
       currencyType: json['currencyType']?.toString(),
       currencyRates: rates,
     );
@@ -110,6 +125,9 @@ class Permissions {
 
   Map<String, dynamic> toJson() => {
         'isAiAgent': isAiAgent,
+        'isCreateAsset': isCreateAsset,
+        'isAssetReport': isAssetReport,
+        'isDigitalTwin': isDigitalTwin,
         'currencyType': currencyType,
         'currencyRates': currencyRates,
       };

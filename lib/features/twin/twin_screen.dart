@@ -63,6 +63,12 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
   }
 
   Future<void> _start() async {
+    if (ref.read(authControllerProvider).permissions.isDigitalTwin == false) {
+      // Denied — build() renders the access-denied state instead. Skip the
+      // token read and webview load entirely.
+      return;
+    }
+
     final token = await ref.read(secureStoreProvider).readToken();
     final session = ref.read(authControllerProvider).session;
 
@@ -164,6 +170,25 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final controller = _controller;
+
+    // Route-level gate: a button-hide alone doesn't stop a QR scan or deep
+    // link from reaching this screen directly, so check again here. Explicit
+    // `false` only — unset stays allowed, same polarity as the trigger button
+    // in order_detail_screen.dart.
+    if (ref.watch(authControllerProvider).permissions.isDigitalTwin == false) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: FeHeader(showBack: true),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: TechEmptyState(
+            icon: LucideIcons.shieldAlert,
+            title: 'twin.access_denied_title'.getString(context),
+            subtitle: 'twin.access_denied_subtitle'.getString(context),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,

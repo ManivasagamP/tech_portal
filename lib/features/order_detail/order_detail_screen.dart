@@ -371,19 +371,23 @@ class _DetailsTab extends ConsumerWidget {
                 const SizedBox(height: 18),
                 Row(
                   children: [
-                    Expanded(
-                      child: _ActionPillButton(
-                        icon: LucideIcons.box,
-                        label: 'order_detail.view_in_3d'.getString(context),
-                        onTap: () {
-                          if (record.assetId != null) {
-                            context.push(
-                              '${Routes.twin(record.assetId!)}?name=${Uri.encodeComponent(OrderDetailScreen.detailTitleFor(record, context))}',
-                            );
-                          }
-                        },
+                    // != false (not == true): an unset/null flag keeps the
+                    // button visible, matching web's ViewInTwinButton polarity.
+                    if (ref.watch(authControllerProvider).permissions.isDigitalTwin !=
+                        false)
+                      Expanded(
+                        child: _ActionPillButton(
+                          icon: LucideIcons.box,
+                          label: 'order_detail.view_in_3d'.getString(context),
+                          onTap: () {
+                            if (record.assetId != null) {
+                              context.push(
+                                '${Routes.twin(record.assetId!)}?name=${Uri.encodeComponent(OrderDetailScreen.detailTitleFor(record, context))}',
+                              );
+                            }
+                          },
+                        ),
                       ),
-                    ),
                     // Record voice note — hidden for now.
                     // const SizedBox(width: 12),
                     // Expanded(

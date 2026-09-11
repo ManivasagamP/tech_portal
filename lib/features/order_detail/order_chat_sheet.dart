@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -10,10 +11,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart' show Amplitude;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../app/env.dart';
 import '../../core/capture/capture_services.dart';
 import '../../core/utils/dates.dart';
 import '../../domain/chat_message.dart';
 import '../../domain/maintenance_record.dart';
+import '../../state/auth_controller.dart';
 import '../../state/chat_controller.dart';
 import '../../state/checklist_controller.dart' show photoCaptureProvider;
 import '../../state/order_detail_controller.dart';
@@ -26,9 +29,21 @@ import '../../widgets/voice_waveform.dart';
 
 /// The per-order assistant, opened from the button on the detail screen.
 ///
-/// Scoped to one job on purpose: it answers about this checklist, this asset
-/// and this order, and has none of the facility agent's asset-creation or
-/// reporting powers.
+/// Scoped to one job: it answers about this checklist, this asset and this
+/// order. When the account has the matching permission (`_HomeView`'s
+/// tiles), it can also switch into the facility agent's asset-request or
+/// asset-report mode for this same asset — everything else about the agent
+/// (create-workflow, general facility Q&A outside this order) stays out of
+/// scope.
+///
+/// Shape mirrors the web portal's floating facility agent
+/// (facility-ai-agent.tsx): a landing screen (`_HomeView`) rather than
+/// dropping straight into a thread, every mode starting fresh rather than
+/// replaying its whole history, and a `_HistoryListView`/`_HistoryDetailView`
+/// pair for reading an older thread back — collapsed to a fixed 3-row list
+/// (one per [ChatMode]) since, unlike web's open-ended per-open session ids,
+/// each mode here has exactly one deterministic thread per order (see
+/// `ChatController`/`AiChatRepository.sessionIdFor`).
 Future<void> showOrderChatSheet(
   BuildContext context, {
   required OrderKey orderKey,
@@ -69,6 +84,14 @@ class _OrderChatSheetState extends ConsumerState<OrderChatSheet> {
   Stream<Amplitude>? _amplitudeStream;
   VoiceRecording? _voiceAttachment;
 
+  // Deliberately obscure: the home screen's subtitle only opens history on
+  // the third tap within [_historyTapWindow] of the first, not a plain
+  // single tap — a stray brush of the thumb while reading "No messages"
+  // shouldn't jump the technician into a different screen.
+  static const _historyTapWindow = Duration(milliseconds: 600);
+  var _historyTapCount = 0;
+  Timer? _historyTapResetTimer;
+
   @override
   void initState() {
     super.initState();
@@ -82,7 +105,21 @@ class _OrderChatSheetState extends ConsumerState<OrderChatSheet> {
     _input.dispose();
     _scroll.dispose();
     _voice.dispose();
+    _historyTapResetTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleHistorySubtitleTap() {
+    _historyTapResetTimer?.cancel();
+    _historyTapCount++;
+    if (_historyTapCount >= 3) {
+      _historyTapCount = 0;
+      ref.read(chatControllerProvider(widget.orderKey).notifier).openHistoryList();
+      return;
+    }
+    _historyTapResetTimer = Timer(_historyTapWindow, () {
+      _historyTapCount = 0;
+    });
   }
 
   String get _greeting {
@@ -190,45 +227,13 @@ class _OrderChatSheetState extends ConsumerState<OrderChatSheet> {
     setState(() => _voiceAttachment = null);
   }
 
-  /// A small action sheet offering the same two capture sources as
-  /// checklist_item_sheet.dart's `_Attachments`, reusing its translated
-  /// strings rather than duplicating "gallery"/"camera" copy.
-  Future<void> _showAttachOptions() async {
-    final fromGallery = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: const Color(0xFF1C1E22),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(context.radii.sheet),
-        ),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(LucideIcons.image, color: Colors.white),
-              title: AppText(
-                'order_detail.choose_from_gallery'.getString(sheetContext),
-                style: const TextStyle(color: Colors.white),
-              ),
-              onTap: () => Navigator.of(sheetContext).pop(true),
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.camera, color: Colors.white),
-              title: AppText(
-                'order_detail.take_a_photo'.getString(sheetContext),
-                style: const TextStyle(color: Colors.white),
-              ),
-              onTap: () => Navigator.of(sheetContext).pop(false),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (fromGallery == null || !mounted) return;
-    await _pickImage(fromGallery: fromGallery);
-  }
+  Future<void> _attachFromGallery() => _pickImage(fromGallery: true);
+
+  /// Direct capture, no intermediate picker — mirrors the web agent's own
+  /// composer, which shows the paperclip (gallery) and a dedicated camera
+  /// icon (facility-ai-agent.tsx:1947-1967) as two separate buttons rather
+  /// than folding camera behind an attach-options sheet.
+  Future<void> _attachFromCamera() => _pickImage(fromGallery: false);
 
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -241,11 +246,54 @@ class _OrderChatSheetState extends ConsumerState<OrderChatSheet> {
     });
   }
 
+  /// The active thread — always starts empty for the mode just entered (see
+  /// `ChatController.openMode`), so this only ever shows what happened
+  /// *this* visit, plus an opening line: [_EmptyState]'s suggestion chips for
+  /// [ChatMode.general] (unchanged), or a single static welcome bubble for
+  /// the other two — copy matches the web agent's own per-mode welcome text
+  /// (facility-ai-agent.tsx) so switching platforms doesn't change what the
+  /// technician is told to do first.
+  Widget _buildChatView(BuildContext context, ChatState state) {
+    final showGeneralEmptyState =
+        state.mode == ChatMode.general && state.messages.isEmpty;
+    final welcome = state.messages.isNotEmpty
+        ? null
+        : switch (state.mode) {
+            ChatMode.createAsset =>
+              'order_detail.chat_welcome_create_asset'.getString(context),
+            ChatMode.report =>
+              'order_detail.chat_welcome_asset_report'.getString(context),
+            ChatMode.general => null,
+          };
+
+    return ListView(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      children: [
+        if (showGeneralEmptyState)
+          _EmptyState(greeting: _greeting, onSuggestionTap: _fillSuggestion)
+        else if (welcome != null)
+          _Bubble(
+            message: ChatMessage(
+              id: 'welcome',
+              content: welcome,
+              fromTechnician: false,
+              sentAt: DateTime.now(),
+            ),
+          ),
+        for (final message in state.messages) _Bubble(message: message),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatControllerProvider(widget.orderKey));
+    final permissions = ref.watch(authControllerProvider).permissions;
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
+    final notifier =
+        ref.read(chatControllerProvider(widget.orderKey).notifier);
 
     return Padding(
       padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
@@ -272,48 +320,60 @@ class _OrderChatSheetState extends ConsumerState<OrderChatSheet> {
         ),
         child: Column(
           children: [
-            _Header(assetName: widget.assetName),
+            _Header(
+              assetName: widget.assetName,
+              onBack: switch (state.view) {
+                ChatSheetView.home => null,
+                ChatSheetView.chat => notifier.goHome,
+                ChatSheetView.historyList => notifier.goHome,
+                ChatSheetView.historyDetail => notifier.openHistoryList,
+              },
+            ),
             Expanded(
-              child: state.loadingHistory && state.messages.isEmpty
-                  ? const Center(
-                      child: SizedBox(
-                        height: 28,
-                        width: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation(FeColors.ink2),
-                        ),
-                      ),
-                    )
-                  : ListView(
-                      controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                      children: [
-                        if (state.messages.isEmpty)
-                          _EmptyState(
-                            greeting: _greeting,
-                            onSuggestionTap: _fillSuggestion,
-                          ),
-                        for (final message in state.messages)
-                          _Bubble(message: message),
-                      ],
-                    ),
+              child: switch (state.view) {
+                ChatSheetView.home => _HomeView(
+                    canCreateAsset: permissions.isCreateAsset,
+                    canAssetReport: permissions.isAssetReport,
+                    onSendMessage: () => notifier.openMode(ChatMode.general),
+                    onCreateAsset: () =>
+                        notifier.openMode(ChatMode.createAsset),
+                    onAssetReport: () => notifier.openMode(ChatMode.report),
+                    onViewHistory: _handleHistorySubtitleTap,
+                  ),
+                ChatSheetView.chat => _buildChatView(context, state),
+                ChatSheetView.historyList => _HistoryListView(
+                    canCreateAsset: permissions.isCreateAsset,
+                    canAssetReport: permissions.isAssetReport,
+                    onSelect: (mode) => notifier.openHistoryThread(mode),
+                  ),
+                ChatSheetView.historyDetail => _HistoryDetailView(
+                    loading: state.loadingHistory,
+                    messages: state.pastMessages,
+                  ),
+              },
             ),
-            _Composer(
-              controller: _input,
-              sending: state.sending,
-              onSend: _send,
-              attachments: _attachments,
-              onAttach: _showAttachOptions,
-              onRemoveAttachment: _removeAttachment,
-              recording: _recording,
-              amplitudeStream: _amplitudeStream,
-              onToggleRecording: _toggleVoiceRecording,
-              voiceAttachment: _voiceAttachment,
-              onRemoveVoiceAttachment: _removeVoiceAttachment,
-              style: theme.textTheme.bodyMedium,
-            ),
+            if (state.view == ChatSheetView.chat)
+              _Composer(
+                controller: _input,
+                sending: state.sending,
+                onSend: _send,
+                attachments: _attachments,
+                onAttachGallery: _attachFromGallery,
+                onAttachCamera: _attachFromCamera,
+                onRemoveAttachment: _removeAttachment,
+                recording: _recording,
+                // The facility agent endpoint behind isCreateAsset/
+                // isAssetReport never reads req.body.audio — a clip recorded
+                // in that mode would just vanish on send, so the mic is
+                // unavailable there rather than silently eating the
+                // recording.
+                voiceEnabled: state.mode == ChatMode.general,
+                amplitudeStream: _amplitudeStream,
+                onToggleRecording: _toggleVoiceRecording,
+                voiceAttachment: _voiceAttachment,
+                onRemoveVoiceAttachment: _removeVoiceAttachment,
+                style: theme.textTheme.bodyMedium,
+              ),
           ],
         ),
       ),
@@ -322,18 +382,30 @@ class _OrderChatSheetState extends ConsumerState<OrderChatSheet> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({this.assetName});
+  const _Header({this.assetName, this.onBack});
 
   final String? assetName;
 
+  /// A leading chevron before the sparkle icon, shown whenever the sheet
+  /// isn't on [ChatSheetView.home] — null hides it rather than disabling it,
+  /// same as the rest of this sheet's other conditionally-shown controls.
+  final VoidCallback? onBack;
+
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+        padding: EdgeInsets.fromLTRB(onBack == null ? 20 : 8, 16, 12, 16),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: Color(0x14FFFFFF))),
         ),
         child: Row(
           children: [
+            if (onBack != null)
+              IconButton(
+                icon: const Icon(LucideIcons.chevronLeft,
+                    size: 20, color: FeColors.ink2),
+                tooltip: 'order_detail.chat_back_tooltip'.getString(context),
+                onPressed: onBack,
+              ),
             // Brand-tinted gradient rather than the flat translucent-white
             // tile this used to be — ties the header icon back to the same
             // accent blue that pulses behind the AppBar trigger button
@@ -396,6 +468,350 @@ class _Header extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// The sheet's landing screen — matches the web facility agent's own "home"
+/// view (facility-ai-agent.tsx): a sparkle mark, "no messages yet", a
+/// tappable hint that doubles as the way into [_HistoryListView], a
+/// full-width general-chat entry, and the two permission-gated mode tiles.
+/// Shown fresh every time the sheet opens, never skipped even when a mode's
+/// underlying thread already has turns in it — see `ChatController.
+/// openMode`.
+class _HomeView extends StatelessWidget {
+  const _HomeView({
+    required this.canCreateAsset,
+    required this.canAssetReport,
+    required this.onSendMessage,
+    required this.onCreateAsset,
+    required this.onAssetReport,
+    required this.onViewHistory,
+  });
+
+  final bool canCreateAsset;
+  final bool canAssetReport;
+  final VoidCallback onSendMessage;
+  final VoidCallback onCreateAsset;
+  final VoidCallback onAssetReport;
+  final VoidCallback onViewHistory;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 64,
+                width: 64,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.10),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
+                  ),
+                  border: Border.all(color: const Color(0x1AFFFFFF)),
+                ),
+                child: const Icon(LucideIcons.sparkles,
+                    size: 30, color: Colors.white),
+              ),
+              const SizedBox(height: 14),
+              AppText(
+                'order_detail.chat_home_title'.getString(context),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              // Tapping this text is the only way into past messages — same
+              // "the empty-state hint doubles as the history entry point"
+              // trick the web agent uses (its own onClick sits on this exact
+              // line, not a separate button).
+              GestureDetector(
+                onTap: onViewHistory,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: AppText(
+                    context.formatString(
+                      'order_detail.chat_home_subtitle'.getString(context),
+                      [Env.brandName],
+                    ),
+                    align: TextAlign.center,
+                    style: const TextStyle(
+                      color: FeColors.ink2,
+                      fontSize: 12.5,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onSendMessage,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(LucideIcons.messageSquare, size: 16),
+                  label: AppText(
+                    'order_detail.chat_send_message_button'
+                        .getString(context),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ),
+              ),
+              if (canCreateAsset || canAssetReport) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    if (canCreateAsset)
+                      Expanded(
+                        child: _HomeActionTile(
+                          icon: LucideIcons.plus,
+                          iconColor: const Color(0xFF34D399),
+                          iconBg: const Color(0x2634D399),
+                          label: 'order_detail.chat_mode_create_asset'
+                              .getString(context),
+                          onTap: onCreateAsset,
+                        ),
+                      ),
+                    if (canCreateAsset && canAssetReport)
+                      const SizedBox(width: 10),
+                    if (canAssetReport)
+                      Expanded(
+                        child: _HomeActionTile(
+                          icon: LucideIcons.fileText,
+                          iconColor: const Color(0xFF60A5FA),
+                          iconBg: const Color(0x2660A5FA),
+                          label: 'order_detail.chat_mode_asset_report'
+                              .getString(context),
+                          onTap: onAssetReport,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+}
+
+class _HomeActionTile extends StatelessWidget {
+  const _HomeActionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFF1C1E22),
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: onTap,
+          child: Container(
+            height: 84,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0x1AFFFFFF)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  height: 30,
+                  width: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 15, color: iconColor),
+                ),
+                const SizedBox(height: 8),
+                AppText(
+                  label,
+                  align: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+/// The fixed 3-row picker standing in for the web agent's open-ended session
+/// list — see the class doc atop this file for why a list is unnecessary
+/// here. Rows for [ChatMode.createAsset]/[ChatMode.report] only show when
+/// the account still has that permission; a thread from before it was
+/// revoked becomes unreachable through this screen, matching how the home
+/// tile for it already disappears.
+class _HistoryListView extends StatelessWidget {
+  const _HistoryListView({
+    required this.canCreateAsset,
+    required this.canAssetReport,
+    required this.onSelect,
+  });
+
+  final bool canCreateAsset;
+  final bool canAssetReport;
+  final ValueChanged<ChatMode> onSelect;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          AppText(
+            'order_detail.chat_history_section_label'
+                .getString(context)
+                .toUpperCase(),
+            style: const TextStyle(
+              color: FeColors.ink2,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _HistoryRow(
+            icon: LucideIcons.messageSquare,
+            label: 'order_detail.chat_history_row_general'.getString(context),
+            onTap: () => onSelect(ChatMode.general),
+          ),
+          if (canCreateAsset) ...[
+            const SizedBox(height: 8),
+            _HistoryRow(
+              icon: LucideIcons.plus,
+              label:
+                  'order_detail.chat_mode_create_asset'.getString(context),
+              onTap: () => onSelect(ChatMode.createAsset),
+            ),
+          ],
+          if (canAssetReport) ...[
+            const SizedBox(height: 8),
+            _HistoryRow(
+              icon: LucideIcons.fileText,
+              label:
+                  'order_detail.chat_mode_asset_report'.getString(context),
+              onTap: () => onSelect(ChatMode.report),
+            ),
+          ],
+        ],
+      );
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0x0DFFFFFF),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(icon, size: 16, color: FeColors.ink2),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: AppText(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Icon(LucideIcons.chevronRight,
+                    size: 16, color: FeColors.ink2),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+/// A past thread, read-only — no composer beneath it (`build()` only mounts
+/// `_Composer` for [ChatSheetView.chat]). Re-fetched every time it's opened
+/// rather than cached, so it reflects turns sent from another device too.
+class _HistoryDetailView extends StatelessWidget {
+  const _HistoryDetailView({required this.loading, required this.messages});
+
+  final bool loading;
+  final List<ChatMessage> messages;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && messages.isEmpty) {
+      return const Center(
+        child: SizedBox(
+          height: 28,
+          width: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation(FeColors.ink2),
+          ),
+        ),
+      );
+    }
+    if (messages.isEmpty) {
+      return Center(
+        child: AppText(
+          'order_detail.chat_history_empty'.getString(context),
+          style: const TextStyle(color: FeColors.ink2, fontSize: 13),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      children: [for (final message in messages) _Bubble(message: message)],
+    );
+  }
 }
 
 /// Shown once, in place of the first assistant bubble, before any message
@@ -824,9 +1240,11 @@ class _Composer extends StatelessWidget {
     required this.sending,
     required this.onSend,
     required this.attachments,
-    required this.onAttach,
+    required this.onAttachGallery,
+    required this.onAttachCamera,
     required this.onRemoveAttachment,
     required this.recording,
+    this.voiceEnabled = true,
     required this.amplitudeStream,
     required this.onToggleRecording,
     required this.voiceAttachment,
@@ -838,9 +1256,11 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final VoidCallback onSend;
   final List<CapturedPhoto> attachments;
-  final VoidCallback onAttach;
+  final VoidCallback onAttachGallery;
+  final VoidCallback onAttachCamera;
   final ValueChanged<int> onRemoveAttachment;
   final bool recording;
+  final bool voiceEnabled;
   final Stream<Amplitude>? amplitudeStream;
   final VoidCallback onToggleRecording;
   final VoiceRecording? voiceAttachment;
@@ -915,24 +1335,23 @@ class _Composer extends StatelessWidget {
                 border: Border.all(color: const Color(0x1AFFFFFF)),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Both leading icons pin to the same 32x32 box the send
-                  // button already uses at the other end of this row
-                  // (below), instead of Material's default 48x48 tap target.
-                  // Left untouched, two full-size default IconButtons sitting
-                  // directly next to each other (no SizedBox between them)
-                  // read as a much bigger gap than the icon-to-textfield or
-                  // icon-to-send-button spacing, since those neighbors are
-                  // smaller/tighter — this keeps every gap in the row close
-                  // to the same visual size.
+                  // Every leading icon pins to a true 32x32 box — `padding`
+                  // and `constraints` alone aren't enough for that: Material
+                  // 3's default `tapTargetSize` still pads an IconButton's
+                  // actual layout footprint out to 48x48 regardless, which
+                  // is what was silently squeezing the text field into
+                  // wrapping once a third icon joined the row.
+                  // `shrinkWrap` is what disables that expansion.
                   IconButton(
-                    onPressed: sending || recording ? null : onAttach,
+                    onPressed: sending || recording ? null : onAttachGallery,
                     tooltip: 'order_detail.chat_attach_photo'.getString(context),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
+                    constraints:
+                        const BoxConstraints.tightFor(width: 32, height: 32),
+                    style: IconButton.styleFrom(
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     icon: const Icon(
                       LucideIcons.paperclip,
@@ -940,17 +1359,39 @@ class _Composer extends StatelessWidget {
                       color: FeColors.ink2,
                     ),
                   ),
+                  const SizedBox(width: 2),
+                  // Direct capture, separate from the gallery picker above —
+                  // matches the web agent's composer, which shows these as
+                  // two distinct icons rather than one "attach" button behind
+                  // a source-choice sheet.
                   IconButton(
-                    onPressed: sending ? null : onToggleRecording,
-                    tooltip: recording
-                        ? 'order_detail.stop_recording'.getString(context)
-                        : 'order_detail.record_voice_note_tooltip'
-                            .getString(context),
+                    onPressed: sending || recording ? null : onAttachCamera,
+                    tooltip: 'order_detail.take_a_photo'.getString(context),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
+                    constraints:
+                        const BoxConstraints.tightFor(width: 32, height: 32),
+                    style: IconButton.styleFrom(
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
+                    icon: const Icon(
+                      LucideIcons.camera,
+                      size: 18,
+                      color: FeColors.ink2,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed:
+                        sending || !voiceEnabled ? null : onToggleRecording,
+                    tooltip: !voiceEnabled
+                        ? 'order_detail.voice_unavailable_in_mode'
+                            .getString(context)
+                        : recording
+                            ? 'order_detail.stop_recording'.getString(context)
+                            : 'order_detail.record_voice_note_tooltip'
+                                .getString(context),
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints.tightFor(width: 32, height: 32),
                     // Same filled-danger-while-recording treatment
                     // `record_voice_note.dart` uses for its own mic button
                     // (dangerSoft fill + danger icon) — kept consistent here
@@ -961,6 +1402,7 @@ class _Composer extends StatelessWidget {
                       foregroundColor:
                           recording ? FeColors.danger : FeColors.ink2,
                       shape: const CircleBorder(),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     icon: Icon(
                       recording ? LucideIcons.square : LucideIcons.mic,
