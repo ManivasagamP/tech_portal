@@ -5,21 +5,10 @@ import '../core/offline/sync_client.dart';
 import '../domain/maintenance_record.dart';
 
 class OrdersPage {
-  const OrdersPage({
-    required this.records,
-    required this.fromCache,
-    this.failedTypes = const [],
-  });
+  const OrdersPage({required this.records, required this.fromCache});
 
   final List<MaintenanceRecord> records;
   final bool fromCache;
-
-  /// Kinds whose fetch failed during [OrdersRepository.listAll] and
-  /// contributed nothing — empty when every kind loaded (including the
-  /// common case of a kind genuinely having zero records, which is not a
-  /// failure). Diagnostic only: lets the UI tell "no records" apart from
-  /// "some records couldn't be fetched" without blocking on the failure.
-  final List<OrderType> failedTypes;
 }
 
 class OrderDetailPage {
@@ -47,35 +36,13 @@ class OrdersRepository {
     );
   }
 
-  /// All three kinds in parallel. A kind that fails contributes nothing rather
-  /// than failing the whole list, so one bad endpoint cannot blank the screen
-  /// — but the failure itself is still reported via [OrdersPage.failedTypes]
-  /// rather than silently disappearing, so a technician who legitimately has
-  /// zero assigned work can be told apart from a session that quietly failed
-  /// to load some or all of it.
-  Future<OrdersPage> listAll(String technicianId) async {
-    final results = await Future.wait(
-      kBrowsableOrderTypes.map((type) async {
-        try {
-          final response = await _api.get('${type.listPath}/$technicianId');
-          return (type: type, records: unwrapList(response.data), ok: true);
-        } catch (_) {
-          return (type: type, records: <Map<String, dynamic>>[], ok: false);
-        }
-      }),
-    );
-
-    return OrdersPage(
-      records: MaintenanceRecord.listFrom(
-        results.expand((r) => r.records).toList(),
-      ),
-      fromCache: false,
-      failedTypes: [
-        for (final r in results)
-          if (!r.ok) r.type,
-      ],
-    );
-  }
+  /// A technician's assigned work orders. Generation (2026-09-12) now
+  /// produces a single unified Work Order for every kind — PM/reactive/
+  /// annual are templates and schedules, not tasks in their own right, and
+  /// the technician endpoint already scopes to `assignedTechnician` — so
+  /// there is no separate per-type fetch to fan out to any more.
+  Future<OrdersPage> listAll(String technicianId) =>
+      listByType(OrderType.workOrder, technicianId);
 
   /// Every kind the technician could be invited to — preventive included.
   /// Preventive is hidden from the orders list and the calendar, but an invite

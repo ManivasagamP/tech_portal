@@ -99,15 +99,6 @@ enum OrderType {
       };
 }
 
-/// The three kinds a technician actually browses. Preventive is excluded: a PM
-/// schedule is never a task by itself — the workable thing is the work order the
-/// PM cron generates from it. PM detail stays reachable from an invite tap.
-const kBrowsableOrderTypes = [
-  OrderType.workOrder,
-  OrderType.reactive,
-  OrderType.annual,
-];
-
 class AssignmentChainEntry {
   const AssignmentChainEntry({
     required this.technicianId,

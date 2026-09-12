@@ -11,40 +11,25 @@ import '../../domain/maintenance_record.dart';
 import '../../state/inspection_controller.dart';
 import '../../state/orders_controller.dart';
 import '../../theme/fe_colors.dart';
-import '../../theme/theme_extensions.dart';
-import '../../widgets/app_text.dart';
 import '../../widgets/common.dart';
 import '../../widgets/order_card.dart';
-import 'filter_sheet.dart';
 
-/// The type chips at the top of the orders list. Distinct from
-/// [OrderType] because it also covers inspections, which aren't a
-/// [MaintenanceRecord] at all and live behind their own repository/provider.
+/// The chips at the top of the orders list. Generation now produces a single
+/// unified Work Order for every kind (see [OrdersRepository.listAll]), so the
+/// only thing left to switch between is that unified list and Inspections,
+/// which are a separate source (their own repository/provider) not modelled
+/// as a [MaintenanceRecord] at all.
 enum _TypeFilter {
   all,
-  annual,
   workOrder,
-  reactive,
   inspection;
 
   String label(BuildContext context) => switch (this) {
         _TypeFilter.all => 'orders.filter_type_all'.getString(context),
-        _TypeFilter.annual => 'orders.filter_type_annual'.getString(context),
         _TypeFilter.workOrder =>
           'orders.filter_type_work_order'.getString(context),
-        _TypeFilter.reactive => 'orders.filter_type_reactive'.getString(context),
         _TypeFilter.inspection =>
           'orders.filter_type_inspection'.getString(context),
-      };
-
-  /// Null means "all maintenance kinds" (workOrder+reactive+annual, the same
-  /// set [OrdersController.selectType]'s null branch already fetches) — not
-  /// meaningful for [inspection], which never drives this controller.
-  OrderType? get orderType => switch (this) {
-        _TypeFilter.annual => OrderType.annual,
-        _TypeFilter.workOrder => OrderType.workOrder,
-        _TypeFilter.reactive => OrderType.reactive,
-        _TypeFilter.all || _TypeFilter.inspection => null,
       };
 }
 
@@ -75,7 +60,6 @@ class OrdersScreen extends ConsumerStatefulWidget {
 
 class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   final _searchController = TextEditingController();
-  bool _showSearchBar = false;
   _TypeFilter _selectedFilter = _TypeFilter.all;
 
   @override
@@ -86,41 +70,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   void _onSelectFilter(_TypeFilter filter) {
     if (filter == _selectedFilter) return;
+    // Both chips left are just a view over already-loaded data — the
+    // controller only ever fetches the one unified work-order list, so
+    // switching chips has nothing to (re)request.
     setState(() => _selectedFilter = filter);
-    // Inspections aren't fetched through OrdersController at all, so a
-    // switch into/out of that filter has nothing to (re)request here — the
-    // build below just changes which already-loaded source(s) it renders.
-    if (filter != _TypeFilter.inspection) {
-      ref.read(ordersControllerProvider.notifier).selectType(filter.orderType);
-    }
-  }
-
-  Future<void> _openFilters(OrdersState state) async {
-    final result = await showModalBottomSheet<OrderFilters>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: FeColors.panel,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.9,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(context.radii.sheet),
-        ),
-      ),
-      builder: (context) => FilterSheet(
-        filters: state.filters,
-        statusOptions: statusOptionsFor(state.selectedType),
-      ),
-    );
-    if (result != null) {
-      ref.read(ordersControllerProvider.notifier).applyFilters(result);
-    }
-  }
-
-  void _clearAll() {
-    _searchController.clear();
-    ref.read(ordersControllerProvider.notifier).resetFilters();
   }
 
   @override
@@ -165,7 +118,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             children: [
-              // Top Bar with Orders title, subtitle, Calendar, and Search circular action buttons
+              // Top bar: Orders title, subtitle, and a Calendar shortcut.
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -201,148 +154,67 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                     tooltip: 'common.calendar'.getString(context),
                     onTap: () => context.push(Routes.calendar),
                   ),
-                  const SizedBox(width: 8),
-                  _CircleActionButton(
-                    icon: _showSearchBar ? LucideIcons.x : LucideIcons.search,
-                    tooltip: 'common.search'.getString(context),
-                    onTap: () {
-                      setState(() {
-                        _showSearchBar = !_showSearchBar;
-                        if (!_showSearchBar) {
-                          _searchController.clear();
-                          controller.setSearchQuery('');
-                        }
-                      });
-                    },
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
 
-              // Type filter chips: All / Annual / Work Order / Reactive /
-              // Inspection. Always visible (unlike the search box below,
-              // which stays behind a toggle) since this is the primary way
-              // to narrow a long combined list.
+              // All / Work Orders / Inspections — the only two sources left
+              // to switch between now that generation collapses every
+              // maintenance kind into a single unified Work Order.
               _TypeFilterRow(
                 selected: _selectedFilter,
                 onSelect: _onSelectFilter,
               ),
               const SizedBox(height: 14),
 
-              // Expandable Search & Filter Bar
-              if (_showSearchBar) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: FeColors.panel,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.02),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: TextField(
-                          controller: _searchController,
-                          autofocus: true,
-                          onChanged: controller.setSearchQuery,
-                          decoration: InputDecoration(
-                            hintText: 'orders.search_hint'.getString(context),
-                            hintStyle: const TextStyle(
-                              color: Color(0xFF94A3B8),
-                              fontSize: 14,
-                            ),
-                            prefixIcon: const Icon(
-                              LucideIcons.search,
-                              size: 18,
-                              color: Color(0xFF64748B),
-                            ),
-                            suffixIcon: state.searchQuery.isEmpty
-                                ? null
-                                : IconButton(
-                                    icon: const Icon(LucideIcons.x, size: 16),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      controller.setSearchQuery('');
-                                    },
-                                  ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Material(
-                      color: FeColors.panel,
-                      borderRadius: BorderRadius.circular(16),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => _openFilters(state),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                LucideIcons.slidersHorizontal,
-                                size: 17,
-                                color: Color(0xFF475569),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'orders.filters'.getString(context),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF475569),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+              // Single, always-visible search bar — the only filter left,
+              // since the technician endpoint already scopes the list to
+              // this technician's own work.
+              Container(
+                decoration: BoxDecoration(
+                  color: FeColors.panel,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
-              ],
-
-              if (state.hasAnyFilter) ...[
-                _ActiveFilters(state: state, onClearAll: _clearAll),
-                const SizedBox(height: 14),
-              ],
-
-              // Diagnostic, not blocking: some kinds failed on the last "All
-              // Tasks" fetch (state.orders_controller.dart merges each
-              // OrdersPage.failedTypes straight through) but whatever did
-              // load is still shown below — this only tells the technician
-              // the empty-looking gaps might not be real.
-              if (showOrders && state.failedTypes.isNotEmpty) ...[
-                const _PartialLoadBanner(),
-                const SizedBox(height: 14),
-              ],
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: controller.setSearchQuery,
+                  decoration: InputDecoration(
+                    hintText: 'orders.search_hint'.getString(context),
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 14,
+                    ),
+                    prefixIcon: const Icon(
+                      LucideIcons.search,
+                      size: 18,
+                      color: Color(0xFF64748B),
+                    ),
+                    suffixIcon: state.searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(LucideIcons.x, size: 16),
+                            onPressed: () {
+                              _searchController.clear();
+                              controller.setSearchQuery('');
+                            },
+                          ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
 
               if (stillLoadingEverything)
                 const Padding(
@@ -387,10 +259,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                       dueDate: record.effectiveDate,
                       technician: record.technicianName,
                       onTap: () => context.push(
-                        Routes.orderDetail(
-                          (state.selectedType ?? record.type).slug,
-                          record.id,
-                        ),
+                        Routes.orderDetail(record.type.slug, record.id),
                       ),
                     ),
                   ),
@@ -455,131 +324,7 @@ class _CircleActionButton extends StatelessWidget {
   }
 }
 
-/// Non-blocking notice that one or more order kinds failed to load on the
-/// last "All Tasks" fetch (see OrdersRepository.listAll's `failedTypes` and
-/// OrdersController.refresh). Whatever kinds *did* load are still rendered
-/// below this — this exists purely so an all-empty or partial list reads as
-/// "something failed" rather than being indistinguishable from a technician
-/// who genuinely has zero assigned work.
-class _PartialLoadBanner extends StatelessWidget {
-  const _PartialLoadBanner();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    decoration: BoxDecoration(
-      color: FeColors.warningSoft,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Row(
-      children: [
-        const Icon(LucideIcons.triangleAlert, size: 16, color: FeColors.warning),
-        const SizedBox(width: 8),
-        Expanded(
-          child: AppText.bodySmall(
-            'orders.partial_load_failed'.getString(context),
-            color: FeColors.warning,
-            weight: FontWeight.w600,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _ActiveFilters extends StatelessWidget {
-  const _ActiveFilters({required this.state, required this.onClearAll});
-
-  final OrdersState state;
-  final VoidCallback onClearAll;
-
-  @override
-  Widget build(BuildContext context) {
-    final filters = state.filters;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        AppText.bodySmall(
-          'orders.active_filters_label'.getString(context),
-          color: FeColors.ink2,
-        ),
-        if (filters.priority != null)
-          _FilterPill(
-            label: context.formatString(
-              'orders.filter_priority'.getString(context),
-              [filters.priority],
-            ),
-            background: FeColors.primary.withValues(alpha: 0.1),
-            foreground: FeColors.primary,
-          ),
-        if (filters.status != null)
-          _FilterPill(
-            label: context.formatString(
-              'orders.filter_status'.getString(context),
-              [filters.status],
-            ),
-            background: FeColors.successSoft,
-            foreground: FeColors.success,
-          ),
-        if (filters.dateFilter != DateFilter.all)
-          _FilterPill(
-            label: filters.dateFilter == DateFilter.overdue
-                ? 'orders.overdue'.getString(context)
-                : 'orders.due_today'.getString(context),
-            background: FeColors.dashboardAccentSoft,
-            foreground: FeColors.dashboardAccent,
-          ),
-        if (state.searchQuery.isNotEmpty)
-          _FilterPill(
-            label: context.formatString(
-              'orders.filter_search'.getString(context),
-              [state.searchQuery],
-            ),
-            background: FeColors.page,
-            foreground: FeColors.ink2,
-          ),
-        GestureDetector(
-          onTap: onClearAll,
-          child: AppText.bodySmall(
-            'orders.clear_all'.getString(context),
-            color: FeColors.danger,
-            weight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FilterPill extends StatelessWidget {
-  const _FilterPill({
-    required this.label,
-    required this.background,
-    required this.foreground,
-  });
-
-  final String label;
-  final Color background;
-  final Color foreground;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-    decoration: BoxDecoration(
-      color: background,
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: AppText.bodySmall(
-      label,
-      color: foreground,
-    ),
-  );
-}
-
-/// The All/Annual/Work Order/Reactive/Inspection chip row at the top of the
-/// orders list.
+/// The All/Work Orders/Inspections chip row at the top of the orders list.
 class _TypeFilterRow extends StatelessWidget {
   const _TypeFilterRow({required this.selected, required this.onSelect});
 

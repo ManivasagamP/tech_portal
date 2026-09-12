@@ -70,11 +70,6 @@ void main() {
         expect(type.historyType, isNotNull);
       }
     });
-
-    test('preventive is not browsable', () {
-      expect(kBrowsableOrderTypes, isNot(contains(OrderType.preventive)));
-      expect(kBrowsableOrderTypes, hasLength(3));
-    });
   });
 
   group('visibleRecords', () {
@@ -108,51 +103,14 @@ void main() {
       ),
     ];
 
-    OrdersState stateWith({
-      OrderFilters filters = const OrderFilters(),
-      String search = '',
-    }) =>
-        OrdersState(records: records, filters: filters, searchQuery: search);
+    OrdersState stateWith({String search = ''}) =>
+        OrdersState(records: records, searchQuery: search);
 
-    test('sorts newest first by default', () {
+    test('sorts newest first', () {
       expect(
         stateWith().visibleRecords.map((r) => r.id).toList(),
         ['2', '1', '3'],
       );
-    });
-
-    test('sorts oldest first when asked', () {
-      final visible = stateWith(
-        filters: const OrderFilters(sortOrder: SortOrder.asc),
-      ).visibleRecords;
-      expect(visible.map((r) => r.id).toList(), ['3', '1', '2']);
-    });
-
-    test('priority match is case-insensitive', () {
-      final visible =
-          stateWith(filters: const OrderFilters(priority: 'Low')).visibleRecords;
-      expect(visible.single.id, '2');
-    });
-
-    test('status match flattens hyphens', () {
-      final visible = stateWith(
-        filters: const OrderFilters(status: 'In-Progress'),
-      ).visibleRecords;
-      expect(visible.single.id, '1');
-    });
-
-    test('overdue excludes finished records', () {
-      final visible = stateWith(
-        filters: const OrderFilters(dateFilter: DateFilter.overdue),
-      ).visibleRecords;
-      expect(visible.map((r) => r.id).toList(), ['1']);
-    });
-
-    test('due today is the calendar day', () {
-      final visible = stateWith(
-        filters: const OrderFilters(dateFilter: DateFilter.dueToday),
-      ).visibleRecords;
-      expect(visible.single.id, '2');
     });
 
     test('search covers title, reference id and location', () {
@@ -162,14 +120,6 @@ void main() {
         stateWith(search: 'tower a').visibleRecords.map((r) => r.id).toList(),
         ['1', '3'],
       );
-    });
-
-    test('filters compose', () {
-      final visible = stateWith(
-        filters: const OrderFilters(priority: 'Critical'),
-        search: 'tower a',
-      ).visibleRecords;
-      expect(visible.single.id, '1');
     });
   });
 
@@ -200,12 +150,5 @@ void main() {
       expect(r.displayLocation, 'Unknown');
       expect(r.displayTechnician, 'Unassigned');
     });
-  });
-
-  test('status options are per selected type', () {
-    expect(statusOptionsFor(OrderType.workOrder), contains('On Hold'));
-    expect(statusOptionsFor(OrderType.reactive), isNot(contains('On Hold')));
-    expect(statusOptionsFor(OrderType.annual), contains('Pending Renewal'));
-    expect(statusOptionsFor(null), contains('Expired'));
   });
 }
