@@ -16,7 +16,7 @@
          nothing to grant. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="Technician"
+        android:label="FusionEco FieldOps"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/locale_controller.dart';
 import '../theme/app_theme.dart';
-import 'env.dart';
 import 'locale_config.dart';
 import 'router.dart';
 
@@ -54,7 +53,7 @@ class _TechnicianAppState extends ConsumerState<TechnicianApp> {
     final localization = FlutterLocalization.instance;
 
     return MaterialApp.router(
-      title: '${Env.brandName} Technician',
+      title: 'FusionEco FieldOps',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(),
       supportedLocales: localization.supportedLocales,

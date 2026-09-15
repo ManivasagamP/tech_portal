@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- The adaptive icon's background layer and the launch window share it,
-         so the splash is the icon's field growing to fill the screen rather
-         than a colour flash. -->
-    <color name="ic_launcher_background">#FFFFFF</color>
-</resources>
