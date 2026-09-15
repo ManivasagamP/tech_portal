@@ -193,6 +193,7 @@
   "order_detail.job_closed": "هذه المهمة مغلقة.",
   "order_detail.close_gate_mandatory": "أكمل جميع المهام قبل إمكانية إغلاق هذه المهمة.",
   "order_detail.close_gate_optional": "أكمل مهمة واحدة على الأقل قبل إمكانية إغلاق هذه المهمة.",
+  "order_detail.close_gate_running": "أوقف المؤقت الجاري في جميع عناصر القائمة قبل إكمال أمر العمل هذا.",
   "order_detail.job_ready_to_close": "هذه المهمة جاهزة للإغلاق.",
   "order_detail.manual_hours_label": "الساعات اليدوية (اختياري)",
   "order_detail.manual_hours_hint": "اتركه فارغًا لاستخدام الساعات المسجلة البالغة %a",
@@ -206,6 +207,7 @@
   "order_detail.start_new_session": "بدء جلسة جديدة",
   "order_detail.mark_incomplete": "تعليم كغير مكتمل",
   "order_detail.mark_complete": "تعليم كمكتمل",
+  "order_detail.stop_timer_to_complete": "أوقف المؤقت قبل تعليم هذه المهمة كمكتملة.",
   "order_detail.total_time": "الإجمالي: %a",
   "order_detail.no_sessions": "لا توجد جلسات بعد.",
   "order_detail.session_number": "الجلسة %a",
@@ -396,6 +398,14 @@
 
   "shell.session_expired_title": "انتهت الجلسة",
   "shell.session_expired_message": "انتهت صلاحية جلستك. يُرجى تسجيل الدخول مرة أخرى للمتابعة.",
+
+  "location_checkin.title": "مطلوب تسجيل الموقع",
+  "location_checkin.message": "شارك موقعك لمواصلة العمل — مضى أكثر من 24 ساعة منذ آخر تسجيل دخول لموقعك.",
+  "location_checkin.share_button": "مشاركة الموقع",
+  "location_checkin.checking": "جارٍ تسجيل الدخول…",
+  "location_checkin.error_service_disabled": "فعّل خدمات الموقع لتسجيل الدخول.",
+  "location_checkin.error_permission_denied": "يرجى تفعيل إذن الوصول للموقع لتسجيل الدخول.",
+  "location_checkin.error_generic": "تعذر تحديد موقعك. حاول مرة أخرى.",
 
   "twin.sign_in_required": "سجّل الدخول مرة أخرى لفتح العرض ثلاثي الأبعاد.",
   "twin.redirect_loop": "استمر العرض ثلاثي الأبعاد في إعادة التوجيه إلى صفحة أخرى.",

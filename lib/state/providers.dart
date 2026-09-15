@@ -8,6 +8,7 @@ import '../core/storage/secure_store.dart';
 import '../core/storage/session_store.dart';
 import '../data/auth_repository.dart';
 import '../data/notifications_repository.dart';
+import '../data/technician_location_repository.dart';
 
 /// All four are constructed in main() and injected via ProviderScope overrides.
 final secureStoreProvider = Provider<SecureStore>(
@@ -41,6 +42,10 @@ final syncClientProvider = Provider<SyncClient>((ref) {
 
 final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => AuthRepository(ref.watch(apiClientProvider)),
+);
+
+final technicianLocationRepositoryProvider = Provider<TechnicianLocationRepository>(
+  (ref) => TechnicianLocationRepository(ref.watch(apiClientProvider)),
 );
 
 /// Fires whenever the offline queue changes, so lists can correct themselves.

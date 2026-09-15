@@ -74,7 +74,9 @@ enum OrderType {
   final String downtimeSource;
   final String completePath;
 
-  /// Work orders have no history endpoint.
+  /// Null for work orders — they use their own `WorkOrderLog` feed instead
+  /// of the `MaintenanceHistory` namespace this drives. See
+  /// `HistoryRepository.list`.
   final String? historyType;
 
   String get listPath => '/api/fm/$entityPath/technician';

@@ -27,6 +27,7 @@ Future<PrefetchResult> prefetchOfflineBundle(
   SyncClient sync,
   String technicianId, {
   bool force = false,
+  void Function(int done, int total)? onProgress,
 }) async {
   if (technicianId.isEmpty) return const PrefetchResult(skipped: true);
   if (await sync.isOffline) return const PrefetchResult(offline: true);
@@ -60,6 +61,7 @@ Future<PrefetchResult> prefetchOfflineBundle(
         } catch (_) {
           failed++;
         }
+        onProgress?.call(saved + failed, urls.length);
       }),
     );
   }

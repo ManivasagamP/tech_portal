@@ -45,4 +45,30 @@ class HistoryEntry {
         newValue: json['newValue']?.toString(),
         timestamp: asDate(json['timestamp'] ?? json['createdAt']),
       );
+
+  /// Work orders keep their activity trail as `WorkOrderLog` rows, not
+  /// `MaintenanceHistory` (that table's `maintenanceType` enum only knows
+  /// Preventive/Reactive/Annual — see `maintenance-history.ts` on the
+  /// server). `GET /api/fm/work-order/{id}/work-log` is the same feed the
+  /// facility-management web's `WorkLogTab` reads, so this maps that shape
+  /// instead of asking for a history namespace work orders don't have.
+  factory HistoryEntry.fromWorkOrderLogJson(Map<String, dynamic> json) {
+    final type = json['type']?.toString();
+    final user = json['user'];
+    final userName = user is Map
+        ? firstNonEmpty([user['name']]) ?? 'Unknown'
+        : firstNonEmpty([user]) ?? 'Unknown';
+    return HistoryEntry(
+      id: json['id']?.toString() ?? '',
+      action: switch (type) {
+        'status_change' || 'completion' => 'STATUS_UPDATE',
+        'assignment' => 'ASSIGNMENT_UPDATED',
+        'system' => 'CHECKLIST_UPDATED',
+        _ => json['action']?.toString() ?? '',
+      },
+      description: firstNonEmpty([json['details']]) ?? '',
+      userName: userName,
+      timestamp: asDate(json['createdAt']),
+    );
+  }
 }

@@ -246,7 +246,7 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: busy
+                      onPressed: busy || (!item.isCompleted && item.isRunning)
                           ? null
                           : () async =>
                                 _report(await _controller.toggle(widget.index)),
@@ -269,6 +269,14 @@ class _ChecklistItemSheetState extends ConsumerState<ChecklistItemSheet> {
                 ],
               ),
             ),
+            if (!item.isCompleted && item.isRunning)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: AppText.caption(
+                  'order_detail.stop_timer_to_complete'.getString(context),
+                  color: FeColors.warning,
+                ),
+              ),
             if (busy) const LinearProgressIndicator(minHeight: 2),
             Flexible(
               child: ListView(

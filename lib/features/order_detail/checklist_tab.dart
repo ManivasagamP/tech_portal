@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -17,6 +18,18 @@ import '../../widgets/common.dart';
 import '../../widgets/tech_popup.dart';
 import 'checklist_item_sheet.dart';
 import 'close_sheet.dart';
+
+/// Keeps the manual-hours field within what the DB column can hold —
+/// `DECIMAL(10,2)` on work_orders/reactive_maintenance/annual_maintenance,
+/// i.e. up to 8 integer digits and 2 decimal digits (max 99999999.99).
+final _manualHoursFormatter = TextInputFormatter.withFunction((
+  oldValue,
+  newValue,
+) {
+  if (newValue.text.isEmpty) return newValue;
+  final match = RegExp(r'^\d{0,8}(\.\d{0,2})?$').hasMatch(newValue.text);
+  return match ? newValue : oldValue;
+});
 
 /// The row shows the text before the first colon, capped at 40 characters —
 /// item names carry a long "task: detail" description.
@@ -452,10 +465,14 @@ class _CloseSectionState extends ConsumerState<CloseSection> {
 
     // Mirrors the server's close guard: at least one item done — an "Other"
     // one counts — and, when the checklist is mandatory, every listed item.
-    // This is UX only; the server enforces the real rule and its 422 wins.
-    final canClose =
+    // No open timer session either — closing a session and marking an item
+    // done are separate actions. This is UX only; the server enforces the
+    // real rule and its 422 wins.
+    final hasOpenSession = hasAnyRunningChecklistItem(widget.items);
+    final checklistWorkReady =
         hasAnyChecklistCompleted(widget.items) &&
         (!mandatory || isChecklistFullyComplete(widget.items));
+    final canClose = checklistWorkReady && !hasOpenSession;
 
     if (widget.record.completedDate != null) {
       return TechCard(
@@ -481,9 +498,11 @@ class _CloseSectionState extends ConsumerState<CloseSection> {
             const SizedBox(width: 12),
             Expanded(
               child: AppText.bodySmall(
-                mandatory
-                    ? 'order_detail.close_gate_mandatory'.getString(context)
-                    : 'order_detail.close_gate_optional'.getString(context),
+                checklistWorkReady && hasOpenSession
+                    ? 'order_detail.close_gate_running'.getString(context)
+                    : mandatory
+                        ? 'order_detail.close_gate_mandatory'.getString(context)
+                        : 'order_detail.close_gate_optional'.getString(context),
                 color: FeColors.ink2,
               ),
             ),
@@ -517,6 +536,7 @@ class _CloseSectionState extends ConsumerState<CloseSection> {
           TextField(
             controller: _hoursController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [_manualHoursFormatter],
             decoration: InputDecoration(
               labelText: 'order_detail.manual_hours_label'.getString(context),
               hintText: context.formatString(

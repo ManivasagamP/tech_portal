@@ -116,6 +116,15 @@ bool hasAnyChecklistCompleted(List<ChecklistItem> items) =>
 bool hasRequiredSignature(List<ChecklistItem> items) =>
     items.any((i) => i.isSignature && i.isCompleted);
 
+/// True when any item's timer is still running — mirrors the web's
+/// `hasActiveChecklistSession` in `lib/checklist-status.ts` and the server's
+/// `checklistCloseGuard.ts` open-session check. A record must not be
+/// closeable while a session is running, even if every item is flagged
+/// complete — closing a session and marking an item done are separate
+/// actions.
+bool hasAnyRunningChecklistItem(List<ChecklistItem> items) =>
+    items.any((i) => i.isRunning);
+
 /// The one synthetic signature item, if a technician has already signed.
 ChecklistItem? findSignatureItem(List<ChecklistItem> items) {
   for (final item in items) {

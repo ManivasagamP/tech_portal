@@ -8,12 +8,18 @@ class HistoryRepository {
 
   final ApiClient _api;
 
-  /// Work orders have no history namespace of their own. The web asks for the
-  /// Preventive namespace with a work-order id, which simply returns nothing;
-  /// that behaviour is kept deliberately rather than inventing a new endpoint.
+  /// Preventive/Reactive/Annual read `MaintenanceHistory` by namespace. Work
+  /// orders track their trail as `WorkOrderLog` rows instead (no
+  /// `historyType` — see `OrderType.workOrder`), so they read the work-log
+  /// feed the facility-management web already uses.
   Future<List<HistoryEntry>> list(OrderType type, String id) async {
-    final historyType = type.historyType ?? OrderType.preventive.historyType!;
-    final response = await _api.get('/api/fm/history/$historyType/$id');
+    if (type == OrderType.workOrder) {
+      final response = await _api.get('/api/fm/work-order/$id/work-log');
+      return unwrapList(response.data)
+          .map(HistoryEntry.fromWorkOrderLogJson)
+          .toList();
+    }
+    final response = await _api.get('/api/fm/history/${type.historyType}/$id');
     return unwrapList(response.data).map(HistoryEntry.fromJson).toList();
   }
 }

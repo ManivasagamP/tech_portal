@@ -43,6 +43,9 @@ class ApiClient {
           if (e.response?.statusCode == 401) {
             _sessionExpired.add(null);
           }
+          if (e.response?.statusCode == 428) {
+            _locationRequired.add(null);
+          }
           handler.next(e);
         },
       ),
@@ -53,9 +56,15 @@ class ApiClient {
   final SecureStore _secureStore;
   final Uuid _uuid;
   final _sessionExpired = StreamController<void>.broadcast();
+  final _locationRequired = StreamController<void>.broadcast();
 
   Dio get raw => _dio;
   Stream<void> get onSessionExpired => _sessionExpired.stream;
+
+  /// Fires on every HTTP 428 (`LOCATION_REQUIRED`) — the server-side gate in
+  /// `middleware/auth.ts` rejecting a mutating request because the
+  /// technician's last GPS fix is stale. Mirrors `onSessionExpired`'s shape.
+  Stream<void> get onLocationRequired => _locationRequired.stream;
   String get baseUrl => _dio.options.baseUrl;
 
   set baseUrl(String value) => _dio.options.baseUrl = value;
@@ -153,5 +162,8 @@ class ApiClient {
     }
   }
 
-  void dispose() => _sessionExpired.close();
+  void dispose() {
+    _sessionExpired.close();
+    _locationRequired.close();
+  }
 }

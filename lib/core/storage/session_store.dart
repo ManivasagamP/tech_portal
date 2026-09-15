@@ -15,6 +15,7 @@ class Session {
     this.partnerRole,
     this.vendorId,
     this.loginAt,
+    this.requestLocation = false,
   });
 
   final String userId;
@@ -26,6 +27,26 @@ class Session {
   final String? partnerRole;
   final String? vendorId;
   final DateTime? loginAt;
+
+  /// Set from the login response's top-level `requestLocation` flag (server:
+  /// `TechnicianLogin`, `technicianLocationService.needsLocationRefresh`) —
+  /// true when the last GPS fix is missing or older than 24h. Persisted so
+  /// the check-in prompt survives an app restart before the technician
+  /// answers it; cleared locally once `updateLocation` succeeds.
+  final bool requestLocation;
+
+  Session copyWith({bool? requestLocation}) => Session(
+        userId: userId,
+        name: name,
+        technicianId: technicianId,
+        email: email,
+        username: username,
+        department: department,
+        partnerRole: partnerRole,
+        vendorId: vendorId,
+        loginAt: loginAt,
+        requestLocation: requestLocation ?? this.requestLocation,
+      );
 
   bool get isInHouse => partnerRole == null || partnerRole == 'in-house';
 
@@ -41,7 +62,11 @@ class Session {
     return remaining.isNegative ? Duration.zero : remaining;
   }
 
-  factory Session.fromLoginResponse(Map<String, dynamic> technician) => Session(
+  factory Session.fromLoginResponse(
+    Map<String, dynamic> technician, {
+    bool requestLocation = false,
+  }) =>
+      Session(
         userId: technician['id']?.toString() ?? '',
         name: technician['name']?.toString() ?? '',
         technicianId: technician['technicianId']?.toString(),
@@ -51,6 +76,7 @@ class Session {
         partnerRole: technician['partnerRole']?.toString(),
         vendorId: technician['vendorId']?.toString(),
         loginAt: DateTime.now(),
+        requestLocation: requestLocation,
       );
 
   Map<String, dynamic> toJson() => {
@@ -63,6 +89,7 @@ class Session {
         'partnerRole': partnerRole,
         'vendorId': vendorId,
         'loginAt': (loginAt ?? DateTime.now()).toIso8601String(),
+        'requestLocation': requestLocation,
       };
 
   factory Session.fromJson(Map<String, dynamic> json) => Session(
@@ -77,6 +104,7 @@ class Session {
         loginAt: json['loginAt'] != null
             ? DateTime.tryParse(json['loginAt'].toString())
             : null,
+        requestLocation: json['requestLocation'] == true,
       );
 }
 
@@ -177,6 +205,17 @@ class SessionStore {
     final now = session.loginAt ?? DateTime.now();
     await _prefs.setInt(_sessionTimestampKey, now.millisecondsSinceEpoch);
     await _prefs.setString(_sessionKey, jsonEncode(session.toJson()));
+  }
+
+  /// Persists the cleared flag in place — called once `updateLocation`
+  /// succeeds, so a killed-and-reopened app doesn't prompt again for a
+  /// check-in that already landed.
+  Future<Session?> clearRequestLocation() async {
+    final session = readSession();
+    if (session == null) return null;
+    final updated = session.copyWith(requestLocation: false);
+    await writeSession(updated);
+    return updated;
   }
 
   Permissions readPermissions() {

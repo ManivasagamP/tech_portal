@@ -461,7 +461,7 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                           for (final option in DowntimeImpact.values)
                             DropdownMenuItem(
                               value: option,
-                              child: AppText(
+                              child: AppText.bodyMedium(
                                 option.displayLabel(context),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -494,7 +494,10 @@ class _CloseSheetState extends ConsumerState<CloseSheet> {
                           for (final option in kRootCauseOptions)
                             DropdownMenuItem(
                               value: option,
-                              child: AppText(displayRootCause(context, option)),
+                              child: AppText.bodyMedium(
+                                displayRootCause(context, option),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                         ],
                         onChanged: _submitting

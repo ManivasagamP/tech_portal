@@ -193,6 +193,7 @@
   "order_detail.job_closed": "This job is closed.",
   "order_detail.close_gate_mandatory": "Complete every task before this job can be closed.",
   "order_detail.close_gate_optional": "Complete at least one task before this job can be closed.",
+  "order_detail.close_gate_running": "Stop the running timer on all checklist items before completing this work order.",
   "order_detail.job_ready_to_close": "This job is ready to close.",
   "order_detail.manual_hours_label": "Manual hours (optional)",
   "order_detail.manual_hours_hint": "Leave empty to use the tracked %a hrs",
@@ -206,6 +207,7 @@
   "order_detail.start_new_session": "Start New Session",
   "order_detail.mark_incomplete": "Mark Incomplete",
   "order_detail.mark_complete": "Mark Complete",
+  "order_detail.stop_timer_to_complete": "Stop the timer before marking this task complete.",
   "order_detail.total_time": "Total: %a",
   "order_detail.no_sessions": "No sessions yet.",
   "order_detail.session_number": "SESSION %a",
@@ -396,6 +398,14 @@
 
   "shell.session_expired_title": "Session Expired",
   "shell.session_expired_message": "Your session has expired. Please sign in again to continue.",
+
+  "location_checkin.title": "Location Check-in Required",
+  "location_checkin.message": "Share your location to keep working — it's been over 24 hours since your last check-in.",
+  "location_checkin.share_button": "Share Location",
+  "location_checkin.checking": "Checking in…",
+  "location_checkin.error_service_disabled": "Turn on location services to check in.",
+  "location_checkin.error_permission_denied": "Please enable location access to check in.",
+  "location_checkin.error_generic": "Could not get your location. Try again.",
 
   "twin.sign_in_required": "Sign in again to open the 3D view.",
   "twin.redirect_loop": "The 3D view kept redirecting to another page.",

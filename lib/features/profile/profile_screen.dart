@@ -734,16 +734,29 @@ class _DownloadMyWorkCard extends ConsumerStatefulWidget {
 
 class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
   bool _busy = false;
+  int _done = 0;
+  int _total = 0;
 
   Future<void> _download() async {
     final session = ref.read(authControllerProvider).session;
     if (session == null || session.userId.isEmpty) return;
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _done = 0;
+      _total = 0;
+    });
     final result = await prefetchOfflineBundle(
       ref.read(syncClientProvider),
       session.userId,
       force: true,
+      onProgress: (done, total) {
+        if (!mounted) return;
+        setState(() {
+          _done = done;
+          _total = total;
+        });
+      },
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -847,7 +860,9 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
                       const SizedBox(width: 8),
                       Text(
                         _busy
-                            ? 'profile.downloading_label'.getString(context)
+                            ? _total > 0
+                                ? '${'profile.downloading_label'.getString(context)} ${(_done / _total * 100).round()}%'
+                                : 'profile.downloading_label'.getString(context)
                             : 'profile.download_button_label'.getString(
                                 context,
                               ),
@@ -863,6 +878,19 @@ class _DownloadMyWorkCardState extends ConsumerState<_DownloadMyWorkCard> {
               ),
             ),
           ),
+          if (_busy && _total > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: _done / _total,
+                  minHeight: 6,
+                  backgroundColor: const Color(0xFFE0F2FE),
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFF0284C7)),
+                ),
+              ),
+            ),
         ],
       ),
     );

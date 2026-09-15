@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/locale_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/location_checkin_gate.dart';
 import 'locale_config.dart';
 import 'router.dart';
 
@@ -71,7 +72,7 @@ class _TechnicianAppState extends ConsumerState<TechnicianApp> {
       // unconfirmed default.
       builder: (context, child) => Directionality(
         textDirection: textDirection,
-        child: child ?? const SizedBox.shrink(),
+        child: LocationCheckInGate(child: child ?? const SizedBox.shrink()),
       ),
     );
   }

@@ -31,6 +31,10 @@ class HttpFailure extends ApiFailure {
 
   bool get isUnauthorized => status == 401;
 
+  /// The gate in `middleware/auth.ts` rejecting a mutating request because
+  /// the technician's last GPS fix is stale — see `ApiClient.onLocationRequired`.
+  bool get isLocationRequired => status == 428;
+
   /// The server rejects a duplicate close with 400 "…already completed"; the web
   /// client treats that as success because an offline replay is not a failure.
   bool get isAlreadyCompleted =>
@@ -51,7 +55,10 @@ ApiFailure mapDioException(DioException e) {
     return NetworkFailure(e.message ?? 'No connection');
   }
   final data = response.data;
-  var message = 'Something went wrong. Please try again.';
+  final status = response.statusCode ?? 0;
+  var message = status >= 500
+      ? 'Server is temporarily unavailable. Please try again in a moment.'
+      : 'Something went wrong. Please try again.';
   var missing = <String>[];
 
   if (data is Map) {
@@ -61,14 +68,22 @@ ApiFailure mapDioException(DioException e) {
     if (rawMissing is List) {
       missing = rawMissing.map((e) => e.toString()).toList();
     }
-  } else if (data is String && data.isNotEmpty) {
+  } else if (data is String && data.isNotEmpty && !_looksLikeMarkup(data)) {
     message = data;
   }
 
   return HttpFailure(
-    status: response.statusCode ?? 0,
+    status: status,
     message: message,
     missing: missing,
     body: data,
   );
+}
+
+/// Reverse-proxy/gateway failures (a 502/504 from nginx/openresty in front of
+/// the API) answer with an HTML error page instead of JSON — that raw markup
+/// must never reach a technician as the error text.
+bool _looksLikeMarkup(String data) {
+  final trimmed = data.trimLeft().toLowerCase();
+  return trimmed.startsWith('<!doctype') || trimmed.startsWith('<html');
 }

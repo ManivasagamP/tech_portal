@@ -36,7 +36,10 @@ class AuthRepository {
 
     return LoginResult(
       token: token,
-      session: Session.fromLoginResponse(Map<String, dynamic>.from(technician)),
+      session: Session.fromLoginResponse(
+        Map<String, dynamic>.from(technician),
+        requestLocation: body['requestLocation'] == true,
+      ),
     );
   }
 
