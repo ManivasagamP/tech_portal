@@ -19,6 +19,13 @@ import '../../widgets/photo_viewer.dart';
 /// the Maintenance Record (Preventive/Reactive/Annual) detail screen: both
 /// are the same [OrderDetailScreen] parameterized by [OrderType], so mounting
 /// this once in that screen's tab bar covers both places the task asks for.
+///
+/// Renders as a plain, non-scrolling column — same as the admin attachments
+/// list right below it in [OrderDetailScreen] — so it's part of that page's
+/// single scroll, not a second independently-scrollable region nested inside
+/// it (a fixed-height box around an inner `ListView` used to make this its
+/// own scrollable island, capturing drags instead of letting them move the
+/// whole page).
 class DocumentsTab extends ConsumerWidget {
   const DocumentsTab({super.key, required this.assetId});
 
@@ -81,37 +88,28 @@ class DocumentsTab extends ConsumerWidget {
       ),
       data: (data) {
         final docs = data.documents;
-        return RefreshIndicator(
-          onRefresh: ref
-              .read(assetDocumentsControllerProvider(id).notifier)
-              .refresh,
-          child: docs.isEmpty
-              ? ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    TechEmptyState(
-                      icon: LucideIcons.fileText,
-                      title: 'order_detail.documents_empty_title'.getString(context),
-                      subtitle: 'order_detail.documents_empty_subtitle'
-                          .getString(context),
-                    ),
-                  ],
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: docs.length + (data.fromCache ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    if (data.fromCache && index == 0) {
-                      return const _CachedNotice();
-                    }
-                    final doc = docs[index - (data.fromCache ? 1 : 0)];
-                    return _DocumentRow(
-                      doc: doc,
-                      onTap: () => _open(context, doc),
-                    );
-                  },
-                ),
+        if (docs.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: TechEmptyState(
+              icon: LucideIcons.fileText,
+              title: 'order_detail.documents_empty_title'.getString(context),
+              subtitle: 'order_detail.documents_empty_subtitle'
+                  .getString(context),
+            ),
+          );
+        }
+        return Column(
+          children: [
+            if (data.fromCache) ...[
+              const _CachedNotice(),
+              const SizedBox(height: 12),
+            ],
+            for (final doc in docs) ...[
+              _DocumentRow(doc: doc, onTap: () => _open(context, doc)),
+              if (doc != docs.last) const SizedBox(height: 12),
+            ],
+          ],
         );
       },
     );

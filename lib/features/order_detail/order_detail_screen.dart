@@ -664,11 +664,6 @@ class _DetailsTab extends ConsumerWidget {
           ],
 
           // Documents section — folded into Details instead of its own tab.
-          // Fixed-height frame rather than shrink-wrapping into this ListView:
-          // DocumentsTab owns its own loading/error/empty states and a
-          // RefreshIndicator built to fill an unconstrained tab body, and
-          // reusing it unmodified (see its own doc comment) means it still
-          // needs bounded height here, not infinite.
           const SizedBox(height: 14),
           Row(
             children: [
@@ -698,10 +693,7 @@ class _DetailsTab extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 360,
-            child: DocumentsTab(assetId: record.assetId),
-          ),
+          DocumentsTab(assetId: record.assetId),
 
           // Admin attachments — files an admin attached when creating the
           // record (distinct from [DocumentsTab] above, which is asset-scoped

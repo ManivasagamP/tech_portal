@@ -17,28 +17,13 @@ class AssetDocumentsState {
 /// is all the endpoint needs.
 class AssetDocumentsController
     extends FamilyAsyncNotifier<AssetDocumentsState, String> {
-  var _disposed = false;
-
   @override
-  Future<AssetDocumentsState> build(String assetId) {
-    ref.onDispose(() => _disposed = true);
-    return _load(assetId);
-  }
-
-  Future<AssetDocumentsState> _load(String assetId) async {
+  Future<AssetDocumentsState> build(String assetId) async {
     final page = await ref.read(assetDocumentsRepositoryProvider).list(assetId);
     return AssetDocumentsState(
       documents: page.documents,
       fromCache: page.fromCache,
     );
-  }
-
-  /// Silent refetch for pull-to-refresh — mirrors
-  /// `OrderDetailController.refresh`.
-  Future<void> refresh() async {
-    final result = await AsyncValue.guard(() => _load(arg));
-    if (_disposed) return;
-    state = result;
   }
 }
 
