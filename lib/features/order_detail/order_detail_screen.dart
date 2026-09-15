@@ -12,6 +12,7 @@ import '../../core/utils/dates.dart';
 import '../../core/utils/external_launch.dart';
 import '../../domain/maintenance_record.dart';
 import '../../state/auth_controller.dart';
+import '../../state/checklist_controller.dart';
 import '../../state/order_detail_controller.dart';
 import '../../theme/fe_colors.dart';
 import '../../widgets/common.dart';
@@ -273,6 +274,7 @@ class _DetailsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final record = detail.record;
+    final checklistItems = ref.watch(checklistControllerProvider(orderKey)).items;
     final permissions = ref.watch(authControllerProvider).permissions;
     final iconData = _icons[record.type] ?? LucideIcons.wrench;
     final iconColor = _iconColors[record.type] ?? const Color(0xFF0284C7);
@@ -416,6 +418,12 @@ class _DetailsTab extends ConsumerWidget {
             ChecklistSummaryCard(
               summary: deriveChecklistSummary(record.checklists),
             ),
+          const SizedBox(height: 14),
+
+          // Close action — mirrors the one at the bottom of the Tasks tab.
+          // Technicians were looking for "close the work order" here first
+          // and not finding it, so it's surfaced in both places now.
+          CloseSection(items: checklistItems, record: record, orderKey: orderKey),
           const SizedBox(height: 14),
 
           // Signature section — only once the technician has actually signed

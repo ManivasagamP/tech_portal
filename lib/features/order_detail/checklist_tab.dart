@@ -125,7 +125,7 @@ class ChecklistTab extends ConsumerWidget {
           label: AppText('order_detail.add_other_task'.getString(context)),
         ),
         const SizedBox(height: 16),
-        _CloseSection(items: items, record: record, orderKey: orderKey),
+        CloseSection(items: items, record: record, orderKey: orderKey),
       ],
     );
   }
@@ -381,8 +381,15 @@ class _Meta extends StatelessWidget {
 /// stands between the technician and being able to close it.
 /// The end of the checklist: whether this job may be closed yet, and — once it
 /// may — the manual-hours override and the button that opens the close sheet.
-class _CloseSection extends ConsumerStatefulWidget {
-  const _CloseSection({
+///
+/// Public (not tab-private) because the Details tab shows it too — technicians
+/// were looking for "close the work order" there first and not finding it
+/// (see order_detail_screen.dart). Both mounts watch the same
+/// `checklistControllerProvider(orderKey)`, so toggling a task in one tab
+/// updates the gate state in the other immediately.
+class CloseSection extends ConsumerStatefulWidget {
+  const CloseSection({
+    super.key,
     required this.items,
     required this.record,
     required this.orderKey,
@@ -393,10 +400,10 @@ class _CloseSection extends ConsumerStatefulWidget {
   final OrderKey orderKey;
 
   @override
-  ConsumerState<_CloseSection> createState() => _CloseSectionState();
+  ConsumerState<CloseSection> createState() => _CloseSectionState();
 }
 
-class _CloseSectionState extends ConsumerState<_CloseSection> {
+class _CloseSectionState extends ConsumerState<CloseSection> {
   final _hoursController = TextEditingController();
 
   @override
