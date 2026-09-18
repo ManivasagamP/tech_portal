@@ -20,7 +20,7 @@ val keystoreProperties = Properties().apply {
 val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
 android {
-    namespace = "com.thefusionapps.fusioneco.technician"
+    namespace = "com.fusionapps.fieldops"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "30.0.16138531"
 
@@ -33,7 +33,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.thefusionapps.fusioneco.technician"
+        applicationId = "com.fusionapps.fieldops"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

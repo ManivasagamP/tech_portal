@@ -1,4 +1,4 @@
-package com.thefusionapps.fusioneco.technician
+package com.fusionapps.fieldops
 
 import io.flutter.embedding.android.FlutterActivity
 
