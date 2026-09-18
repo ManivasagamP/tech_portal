@@ -5,7 +5,7 @@ Built: 2026-09-18. Copy into Notion yourself.
 ## Output
 - AAB: `D:\fe_portals\technician_portal\build\app\outputs\bundle\release\app-release.aab` (78.6MB)
 - Version: 1.0.1+2 (from pubspec.yaml) — see [VERSIONING.md](VERSIONING.md) for the bump policy
-- Package: com.fusionapps.fieldops (changed from com.thefusionapps.fusioneco.technician per TL request — new Play Console app listing, package can't be changed once set there)
+- Package: com.fusionapps.fieldops (changed from com.thefusionapps.fusioneco.technician- new Play Console app listing, package can't be changed once set there)
 - Signed with: release key (CN=Fusion Eco), NOT debug — verified via jarsigner.
 
 ## Signing key (SECRET — do not put in Notion)

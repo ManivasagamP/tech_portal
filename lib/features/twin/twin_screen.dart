@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../app/env.dart';
@@ -86,6 +87,26 @@ class _TwinScreenState extends ConsumerState<TwinScreen> {
       ..setBackgroundColor(Colors.black)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final target = Uri.tryParse(request.url);
+            final base = Uri.tryParse(Env.webBaseUrl);
+            final sameOrigin = target != null &&
+                base != null &&
+                target.scheme == base.scheme &&
+                target.host == base.host &&
+                target.port == base.port;
+            if (sameOrigin) return NavigationDecision.navigate;
+
+            // Attachment/document links point at a different host (file
+            // storage, not the web app) — this WebView isn't a browser, it
+            // has nowhere to show them and no back button of its own, so
+            // loading one here just strands the technician. Hand it to the
+            // device's real browser instead and keep the twin page as-is.
+            if (target != null) {
+              launchUrl(target, mode: LaunchMode.externalApplication);
+            }
+            return NavigationDecision.prevent;
+          },
           onPageFinished: (url) async {
             if (!url.startsWith(_twinUrl.split('?').first)) {
               if (_attempts >= _maxAttempts) {
