@@ -6,7 +6,10 @@ import '../core/offline/queue_bus.dart';
 import '../core/offline/sync_client.dart';
 import '../core/storage/secure_store.dart';
 import '../core/storage/session_store.dart';
+import '../core/c2o/c2o_asset_resolver.dart';
+import '../data/asset_tag_issue_repository.dart';
 import '../data/auth_repository.dart';
+import '../data/c2o_field_verification_repository.dart';
 import '../data/notifications_repository.dart';
 import '../data/technician_location_repository.dart';
 
@@ -46,6 +49,22 @@ final authRepositoryProvider = Provider<AuthRepository>(
 
 final technicianLocationRepositoryProvider = Provider<TechnicianLocationRepository>(
   (ref) => TechnicianLocationRepository(ref.watch(apiClientProvider)),
+);
+
+final c2oFieldVerificationRepositoryProvider = Provider<C2oFieldVerificationRepository>(
+  (ref) => C2oFieldVerificationRepository(ref.watch(apiClientProvider)),
+);
+
+final assetTagIssueRepositoryProvider = Provider<AssetTagIssueRepository>(
+  (ref) => AssetTagIssueRepository(ref.watch(syncClientProvider)),
+);
+
+/// FR-1.1 — offline-first resolve of a scanned c2o tag.
+final c2oAssetResolverProvider = Provider<C2oAssetResolver>(
+  (ref) => C2oAssetResolver(
+    db: ref.watch(offlineDbProvider),
+    repo: ref.watch(c2oFieldVerificationRepositoryProvider),
+  ),
 );
 
 /// Fires whenever the offline queue changes, so lists can correct themselves.

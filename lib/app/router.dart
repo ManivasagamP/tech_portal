@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/c2o_search/c2o_asset_search_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/inspection/inspection_form_screen.dart';
 import '../features/inspection/inspection_list_screen.dart';
 import '../features/invites/invites_screen.dart';
 import '../features/login/login_screen.dart';
+import '../features/nameplate_ocr/nameplate_ocr_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/order_detail/order_detail_screen.dart';
 import '../features/orders/orders_screen.dart';
@@ -31,6 +33,8 @@ abstract final class Routes {
   static const calendar = '/calendar';
   static const notifications = '/notifications';
   static const scan = '/scan';
+  static const nameplateOcr = '/nameplate-ocr';
+  static const c2oSearch = '/c2o-search';
   static const syncCenter = '/sync';
   static const inspections = '/inspections';
 
@@ -166,6 +170,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.scan,
         parentNavigatorKey: _rootKey,
         builder: (context, state) => const ScannerScreen(),
+      ),
+      GoRoute(
+        path: Routes.nameplateOcr,
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const NameplateOcrScreen(),
+      ),
+      GoRoute(
+        path: Routes.c2oSearch,
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const C2oAssetSearchScreen(),
       ),
       GoRoute(
         path: Routes.syncCenter,

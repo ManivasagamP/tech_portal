@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -12,37 +13,63 @@ import 'package:vibration/vibration.dart';
 
 import '../../app/env.dart';
 import '../../app/router.dart';
+import '../../core/c2o/c2o_asset_resolver.dart';
 import '../../core/utils/qr_payload.dart';
+import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
 import '../../theme/theme_extensions.dart';
 import '../../widgets/app_text.dart';
 import '../../widgets/fe_header.dart';
 
-/// Reads the QR stickers on assets, work orders and material bins.
+/// Reads the QR stickers on assets, work orders and material bins, plus the
+/// c2o field-verification tags — those resolve offline against the local
+/// cache first (FR-1.1) rather than always opening the web asset page.
 ///
-/// A hit never navigates on its own — it shows what it found and waits for a
-/// deliberate tap. Scanning is easy to do by accident when a camera is
-/// sweeping a plant room, and being thrown into an unrelated record mid-job
-/// loses whatever the technician was doing.
-class ScannerScreen extends StatefulWidget {
+/// The two families behave differently on purpose. A general Asset/WorkOrder
+/// hit never navigates on its own — it shows what it found and waits for a
+/// deliberate tap, because jumping into an unrelated record mid-job loses
+/// whatever the technician was doing. A c2o tag has nowhere disruptive to
+/// jump to, so it runs in continuous mode instead (FR-1.2): the camera never
+/// stops, each tag flashes its outcome and joins a running session log, and
+/// the technician just keeps sweeping — that is the actual speed win over
+/// the web page's one-scan-per-page-load flow.
+class ScannerScreen extends ConsumerStatefulWidget {
   const ScannerScreen({super.key});
 
   @override
-  State<ScannerScreen> createState() => _ScannerScreenState();
+  ConsumerState<ScannerScreen> createState() => _ScannerScreenState();
 }
 
-class _ScannerScreenState extends State<ScannerScreen> {
-  /// 400 ms between detections and QR-only decoding, matching the web scanner.
+class _ScannerScreenState extends ConsumerState<ScannerScreen> {
+  /// 400 ms between detections. QR for the general and c2o schemes, plus
+  /// Code 128/39 for the older asset plates that predate QR tagging
+  /// (FR-1.3) — those decode to a bare reference id, handled the same
+  /// tokenless way as the general Asset label (see `c2o_scan_payload.dart`).
   final _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.normal,
     detectionTimeoutMs: 400,
-    formats: const [BarcodeFormat.qrCode],
+    formats: const [
+      BarcodeFormat.qrCode,
+      BarcodeFormat.code128,
+      BarcodeFormat.code39,
+    ],
   );
 
   /// Only our own codes are held on screen; external content is acted on and
   /// forgotten, so this is never a [ScannedExternal].
   ScannedRecord? _result;
   String? _resultRaw;
+
+  /// FR-1.2 — every c2o tag scanned this session, most recent first. Unlike
+  /// [_result] this never blocks the camera; it is a running log, not a
+  /// pending confirmation.
+  final _c2oHistory = <_C2oScanEntry>[];
+
+  /// The most recent c2o outcome, shown briefly and cleared automatically —
+  /// continuous mode means no tap is required to keep scanning.
+  C2oResolution? _c2oFlash;
+  Timer? _c2oFlashTimer;
+
   var _paused = false;
   var _processing = false;
 
@@ -55,6 +82,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void dispose() {
     _cooldown?.cancel();
+    _c2oFlashTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -70,6 +98,29 @@ class _ScannerScreenState extends State<ScannerScreen> {
     _cooldown = Timer(const Duration(seconds: 4), () {
       if (mounted) setState(() => _lastScanned = null);
     });
+
+    // c2o tags are checked first — offline, against the local cache — before
+    // falling through to the general scheme, which currently only ever opens
+    // a web page and so cannot answer with the radio off (see FR-1.1).
+    final c2oResult = await ref.read(c2oAssetResolverProvider).resolve(raw);
+    if (!mounted) return;
+    if (c2oResult != null) {
+      await _buzz();
+      if (!mounted) return;
+      // Continuous mode (FR-1.2): join the session log and flash the
+      // outcome, but never block — the camera keeps looking immediately.
+      _c2oFlashTimer?.cancel();
+      setState(() {
+        _c2oHistory.insert(0, _C2oScanEntry(outcome: c2oResult, at: DateTime.now()));
+        _c2oFlash = c2oResult;
+        _resultRaw = raw;
+        _processing = false;
+      });
+      _c2oFlashTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (mounted) setState(() => _c2oFlash = null);
+      });
+      return;
+    }
 
     final resolution = resolveScannedValue(raw);
     await _buzz();
@@ -174,9 +225,21 @@ class _ScannerScreenState extends State<ScannerScreen> {
     });
   }
 
+  /// Convenience link back to the asset's existing public web page — a
+  /// deeper detail view than this app has (FR-2's screen isn't built yet),
+  /// reusing what the web tech portal already ships. `push`, not
+  /// `pushReplacement`, so continuous mode (FR-1.2) is still there,
+  /// scanning, when the technician backs out of the browser.
+  void _openAssetWeb(String assetId, String? name) {
+    context.push(
+      Routes.webPage('${Env.webBaseUrl}/public/assets/$assetId', title: name),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
+    final flash = _c2oFlash;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -233,6 +296,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
               );
             },
           ),
+          // FR-1.6 — reachable from the same screen a technician already
+          // opens to identify an asset, for the case where there is no tag
+          // left to point the camera at. FeHeader here is the light
+          // `.standard` variant (only the body below it goes black for the
+          // camera), so this needs an ink-coloured icon, not white.
+          IconButton(
+            tooltip: 'scanner.search'.getString(context),
+            icon: const Icon(LucideIcons.search, size: 18, color: FeColors.ink),
+            onPressed: () => context.push(Routes.c2oSearch),
+          ),
         ],
       ),
       body: SafeArea(
@@ -256,6 +329,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
                               message: _describe(context, error),
                             ),
                             onDetect: (capture) {
+                              // Only the general Asset/WorkOrder hit blocks
+                              // detection — a c2o flash never does, that is
+                              // the whole point of continuous mode (FR-1.2).
                               if (_paused || _processing || result != null) {
                                 return;
                               }
@@ -272,20 +348,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
                               label: result.label,
                               detail: result.path,
                             ),
+                          if (flash != null)
+                            _C2oOutcomeOverlay(outcome: flash),
                         ],
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
-              if (result == null)
-                _Controls(
-                  paused: _paused,
-                  onTogglePause: _togglePause,
-                  onGallery: _scanFromGallery,
-                )
-              else
+              const SizedBox(height: 16),
+              if (result != null)
                 _OpenButton(
                   label: context.formatString(
                     'scanner.open_result'.getString(context),
@@ -293,8 +365,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   ),
                   onOpen: _openResult,
                   onDismiss: _resume,
+                )
+              else
+                _Controls(
+                  paused: _paused,
+                  onTogglePause: _togglePause,
+                  onGallery: _scanFromGallery,
+                  onNameplate: () => context.push(Routes.nameplateOcr),
                 ),
-              if (_resultRaw != null) ...[
+              if (result != null && _resultRaw != null) ...[
                 const SizedBox(height: 12),
                 AppText.caption(
                   _resultRaw!,
@@ -303,6 +382,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   overflow: TextOverflow.ellipsis,
                   color: Colors.white.withValues(alpha: 0.6),
                 ),
+              ],
+              if (result == null && _c2oHistory.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _C2oSessionStrip(history: _c2oHistory, onOpenWeb: _openAssetWeb),
               ],
             ],
           ),
@@ -438,17 +521,19 @@ class _Controls extends StatelessWidget {
     required this.paused,
     required this.onTogglePause,
     required this.onGallery,
+    required this.onNameplate,
   });
 
   final bool paused;
   final VoidCallback onTogglePause;
   final VoidCallback onGallery;
+  final VoidCallback onNameplate;
 
   @override
   Widget build(BuildContext context) => Row(
         children: [
           Expanded(
-            flex: 2,
+            flex: 3,
             child: SizedBox(
               height: 52,
               child: FilledButton.icon(
@@ -458,6 +543,7 @@ class _Controls extends StatelessWidget {
                       paused ? FeColors.primary : FeColors.panel,
                   foregroundColor:
                       paused ? Colors.white : FeColors.ink,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
                 icon: Icon(paused ? LucideIcons.play : LucideIcons.pause,
                     size: 16),
@@ -465,12 +551,15 @@ class _Controls extends StatelessWidget {
                   paused
                       ? 'scanner.resume'.getString(context)
                       : 'scanner.pause'.getString(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
+            flex: 2,
             child: SizedBox(
               height: 52,
               child: OutlinedButton.icon(
@@ -481,9 +570,35 @@ class _Controls extends StatelessWidget {
                   backgroundColor: Colors.transparent,
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Color(0x33FFFFFF)),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                 ),
                 icon: const Icon(LucideIcons.image, size: 16),
-                label: AppText('scanner.photo'.getString(context)),
+                label: AppText(
+                  'scanner.photo'.getString(context),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // FR-1.5 — the fallback when a tag can't be read at all: read the
+          // physical nameplate instead. Icon-only so three controls still
+          // fit the row without crowding the two more common actions.
+          SizedBox(
+            height: 52,
+            width: 52,
+            child: OutlinedButton(
+              onPressed: onNameplate,
+              style: OutlinedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Color(0x33FFFFFF)),
+                padding: EdgeInsets.zero,
+              ),
+              child: Tooltip(
+                message: 'scanner.nameplate'.getString(context),
+                child: const Icon(LucideIcons.scanLine, size: 18),
               ),
             ),
           ),
@@ -531,4 +646,219 @@ class _OpenButton extends StatelessWidget {
           ),
         ],
       );
+}
+
+/// FR-1.1's four outcomes, each with its own colour so a technician glancing
+/// up from the tag can tell resolved (blue), an honest network gap (amber),
+/// and something actually wrong (red) apart without reading the text. Shared
+/// by the full-screen flash ([_C2oOutcomeOverlay]) and the session log
+/// ([_C2oSessionStrip]) so the two never drift out of sync.
+class _C2oVisual {
+  const _C2oVisual(this.color, this.icon, this.title, this.detail);
+
+  final Color color;
+  final IconData icon;
+  final String title;
+  final String detail;
+}
+
+_C2oVisual _c2oVisual(BuildContext context, C2oResolution outcome) => switch (outcome) {
+  C2oResolved(:final claims, :final fromCache) => _C2oVisual(
+    FeColors.primary,
+    LucideIcons.circleCheck,
+    (claims['asset'] is Map ? claims['asset']['assetName'] as String? : null) ??
+        'scanner.c2o_resolved'.getString(context),
+    fromCache
+        ? 'scanner.c2o_resolved_offline'.getString(context)
+        : 'scanner.c2o_resolved_online'.getString(context),
+  ),
+  C2oTokenMismatch() => _C2oVisual(
+    FeColors.danger,
+    LucideIcons.shieldAlert,
+    'scanner.c2o_token_mismatch'.getString(context),
+    'scanner.c2o_token_mismatch_detail'.getString(context),
+  ),
+  C2oNotFound() => _C2oVisual(
+    FeColors.danger,
+    LucideIcons.circleX,
+    'scanner.c2o_not_found'.getString(context),
+    'scanner.c2o_not_found_detail'.getString(context),
+  ),
+  C2oNeedsSignal() => _C2oVisual(
+    FeColors.warning,
+    LucideIcons.wifiOff,
+    'scanner.c2o_needs_signal'.getString(context),
+    'scanner.c2o_needs_signal_detail'.getString(context),
+  ),
+};
+
+class _C2oOutcomeOverlay extends StatelessWidget {
+  const _C2oOutcomeOverlay({required this.outcome});
+
+  final C2oResolution outcome;
+
+  @override
+  Widget build(BuildContext context) {
+    final visual = _c2oVisual(context, outcome);
+
+    return Container(
+      color: visual.color.withValues(alpha: 0.9),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(visual.icon, size: 36, color: visual.color),
+          ),
+          const SizedBox(height: 16),
+          AppText(
+            visual.title,
+            align: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          AppText(
+            visual.detail,
+            align: TextAlign.center,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0xCCFFFFFF), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One c2o tag scanned this session (FR-1.2) — the running log a continuous
+/// walk builds up instead of a per-tag confirm screen.
+class _C2oScanEntry {
+  const _C2oScanEntry({required this.outcome, required this.at});
+
+  final C2oResolution outcome;
+  final DateTime at;
+}
+
+/// Compact, always-visible tally of the session so far — a dot per scan,
+/// most recent first, plus a running count. Never blocks the camera; this is
+/// what "queues without returning to a list" (FR-1.2) looks like without a
+/// separate list screen.
+class _C2oSessionStrip extends StatelessWidget {
+  const _C2oSessionStrip({required this.history, required this.onOpenWeb});
+
+  final List<_C2oScanEntry> history;
+
+  /// Opens a resolved entry's public web page. Only ever called for a
+  /// [C2oResolved] entry — there is nothing to open for a mismatch, a
+  /// not-found, or a needs-signal outcome.
+  final void Function(String assetId, String? name) onOpenWeb;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = history.where((e) => e.outcome is C2oResolved).length;
+    final flagged = history.length - resolved;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          AppText(
+            context.formatString(
+              'scanner.c2o_session_count'.getString(context),
+              [history.length.toString()],
+            ),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (flagged > 0) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: FeColors.warning.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: AppText(
+                context.formatString(
+                  'scanner.c2o_session_flagged'.getString(context),
+                  [flagged.toString()],
+                ),
+                style: const TextStyle(
+                  color: FeColors.warning,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(width: 12),
+          // A horizontal ListView needs a bounded width from its parent —
+          // without Expanded here, Row hands it unbounded width and the
+          // rendering library throws mid-layout, silently failing to paint
+          // the whole strip (caught live: no error dialog, just nothing).
+          Expanded(
+            child: SizedBox(
+              height: 24,
+              child: ListView.separated(
+                reverse: true,
+                scrollDirection: Axis.horizontal,
+                itemCount: history.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final outcome = history[index].outcome;
+                  final visual = _c2oVisual(context, outcome);
+                  final dot = Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: visual.color,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  );
+                  return Tooltip(
+                    message: visual.title,
+                    child: outcome is C2oResolved
+                        ? GestureDetector(
+                            // A bit more than the 14px dot itself, so a
+                            // gloved thumb can actually hit it.
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => onOpenWeb(
+                              outcome.assetId,
+                              outcome.claims['asset'] is Map
+                                  ? outcome.claims['asset']['assetName']?.toString()
+                                  : null,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: dot,
+                            ),
+                          )
+                        : dot,
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
