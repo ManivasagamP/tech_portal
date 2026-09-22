@@ -12,6 +12,7 @@ import '../data/asset_repository.dart';
 import '../data/asset_tag_issue_repository.dart';
 import '../data/auth_repository.dart';
 import '../data/c2o_field_verification_repository.dart';
+import '../data/field_verification_repository.dart';
 import '../data/floor_plan_repository.dart';
 import '../data/notifications_repository.dart';
 import '../data/technician_location_repository.dart';
@@ -56,6 +57,12 @@ final technicianLocationRepositoryProvider = Provider<TechnicianLocationReposito
 
 final c2oFieldVerificationRepositoryProvider = Provider<C2oFieldVerificationRepository>(
   (ref) => C2oFieldVerificationRepository(ref.watch(apiClientProvider)),
+);
+
+/// FR-3 — submits the capture form (result/condition/photos/GPS) built on
+/// top of the read-only scan resolve above.
+final fieldVerificationRepositoryProvider = Provider<FieldVerificationRepository>(
+  (ref) => FieldVerificationRepository(ref.watch(syncClientProvider)),
 );
 
 final assetTagIssueRepositoryProvider = Provider<AssetTagIssueRepository>(

@@ -6,6 +6,7 @@ import '../features/asset_detail/asset_detail_screen.dart';
 import '../features/c2o_search/c2o_asset_search_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/field_verification/field_verification_screen.dart';
 import '../features/floor_plan/floor_plan_screen.dart';
 import '../features/inspection/inspection_form_screen.dart';
 import '../features/inspection/inspection_list_screen.dart';
@@ -62,6 +63,25 @@ abstract final class Routes {
       'type': ?assetType,
     };
     return Uri(path: '/floor-plan/$floorId', queryParameters: query).toString();
+  }
+
+  /// FR-3. [claimedSerial]/[claimedTag] feed the "same as claimed" shortcut
+  /// (FR-3.2); [floorId] rides along purely so a submitted verification can
+  /// jump straight into the floor plan afterward without a second scan.
+  static String verifyAsset(
+    String assetId, {
+    String? assetName,
+    String? claimedSerial,
+    String? claimedTag,
+    String? floorId,
+  }) {
+    final query = {
+      'name': ?assetName,
+      'claimedSerial': ?claimedSerial,
+      'claimedTag': ?claimedTag,
+      'floorId': ?floorId,
+    };
+    return Uri(path: '/verify/$assetId', queryParameters: query).toString();
   }
 
   /// The built-in browser. The address is a query parameter rather than a path
@@ -229,6 +249,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => TwinScreen(
           assetId: state.pathParameters['assetId'] ?? '',
           assetName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: '/verify/:assetId',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => FieldVerificationScreen(
+          assetId: state.pathParameters['assetId'] ?? '',
+          assetName: state.uri.queryParameters['name'],
+          claimedSerial: state.uri.queryParameters['claimedSerial'],
+          claimedTag: state.uri.queryParameters['claimedTag'],
+          floorId: state.uri.queryParameters['floorId'],
         ),
       ),
       GoRoute(

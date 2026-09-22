@@ -3,7 +3,7 @@
 abstract final class Env {
   static const defaultApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.0.111:5002',
+    defaultValue: 'http://192.168.0.125:5002',
   );
   // static const defaultApiBaseUrl = String.fromEnvironment(
   //   'API_BASE_URL',
@@ -15,7 +15,7 @@ abstract final class Env {
   /// the built-in browser.
   static const webBaseUrl = String.fromEnvironment(
     'WEB_BASE_URL',
-    defaultValue: 'http://192.168.0.111:3000',
+    defaultValue: 'http://192.168.0.125:3000',
   );
   // static const webBaseUrl = String.fromEnvironment(
   //   'WEB_BASE_URL',

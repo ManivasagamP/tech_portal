@@ -155,6 +155,13 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                         child: _StatusChips(detail: detail),
                       ),
                       const SizedBox(height: 16),
+                      // FR-3 — the capture form itself. Primary action on
+                      // this screen: bold, full-width, above the secondary
+                      // 3D/floor-plan wayfinding buttons below it.
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _VerifyAssetButton(detail: detail),
+                      ),
                       // FR-2.9 — a full native 3D renderer was ruled "Won't
                       // (v1)" in the plan; TwinScreen already hosts the web's
                       // real xeokit viewer in a WebView instead (same gate,
@@ -192,6 +199,47 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                       ),
                     ],
                   ),
+      ),
+    );
+  }
+}
+
+/// FR-3 — entry point into [FieldVerificationScreen] (`Routes.verifyAsset`).
+/// Carries the register's claimed serial/tag along so FR-3.2's "same as
+/// claimed" shortcut has something to fill in, and the floor id so a
+/// completed verification can offer the floor plan next without re-scanning.
+class _VerifyAssetButton extends StatelessWidget {
+  const _VerifyAssetButton({required this.detail});
+
+  final AssetDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () => context.push(
+          Routes.verifyAsset(
+            detail.id,
+            assetName: detail.assetName ?? detail.assetReferenceId ?? detail.id,
+            claimedSerial: detail.serialNumber,
+            claimedTag: detail.assetReferenceId ?? detail.supplierTagNumber,
+            floorId: detail.floorId,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: FeColors.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          elevation: 0,
+        ),
+        icon: const Icon(LucideIcons.clipboardCheck, size: 16),
+        label: AppText.label(
+          'assetDetail.verify_asset'.getString(context),
+          color: Colors.white,
+          weight: FontWeight.w700,
+        ),
       ),
     );
   }

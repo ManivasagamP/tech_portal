@@ -63,6 +63,8 @@ dependencies:
   # on-device nameplate OCR (FR-1.5) — pre-fills observation fields, never
   # auto-submits; see lib/core/ocr/nameplate_ocr.dart
   google_mlkit_text_recognition: ^0.17.1
+  camera: ^0.12.1
+  sensors_plus: ^7.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
