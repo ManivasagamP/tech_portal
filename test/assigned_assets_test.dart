@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:technician_portal/core/c2o/asset_detail.dart';
 import 'package:technician_portal/core/c2o/assigned_assets.dart';
 import 'package:technician_portal/domain/maintenance_record.dart';
 
@@ -47,6 +48,12 @@ void main() {
       final asset = assets.single;
       expect(asset.assetId, 'asset-9');
       expect(asset.assetReferenceId, 'AST309');
+      // FR-2's AssetDetail.fromClaims() requires claims['asset']['id'] to
+      // resolve the row at all — regression coverage for the bug where an
+      // assigned-only entry had every display field except this one, so
+      // "View Full Details" silently landed on a not-found screen even
+      // though the cache write itself succeeded.
+      expect(asset.claims['asset']['id'], 'asset-9');
       expect(asset.claims['asset']['assetName'], 'Rooftop AHU 3');
       expect(asset.claims['asset']['manufacturer'], 'Carrier');
       expect(asset.claims['asset']['serialNumber'], 'SNAHU003');
@@ -78,5 +85,39 @@ void main() {
 
       expect(assignedAssetsFrom(records), hasLength(1));
     });
+
+    test(
+      'an assigned-only entry is something FR-2 can actually open, not a silent not-found screen',
+      () {
+        final records = [
+          _record(id: 'wo-5', assetId: 'asset-12', assetName: 'UPS Battery Backup', location: 'First Floor'),
+        ];
+
+        final cached = assignedAssetsFrom(records).single;
+        final detail = AssetDetail.fromClaims(cached.claims);
+
+        expect(detail, isNotNull);
+        expect(detail!.id, 'asset-12');
+        expect(detail.assetName, 'UPS Battery Backup');
+      },
+    );
+
+    test(
+      'the reference id is duplicated into claims too, not just the outer cache row — '
+      'real seed data with no assetName anywhere needs it as FR-2\'s identity-block fallback',
+      () {
+        final records = [
+          _record(id: 'wo-6', assetId: 'asset-13', referenceId: 'WO-757'),
+        ];
+
+        final cached = assignedAssetsFrom(records).single;
+        expect(cached.assetReferenceId, 'WO-757');
+        expect(cached.claims['asset']['assetReferenceId'], 'WO-757');
+
+        final detail = AssetDetail.fromClaims(cached.claims)!;
+        expect(detail.assetName, isNull);
+        expect(detail.assetReferenceId, 'WO-757');
+      },
+    );
   });
 }

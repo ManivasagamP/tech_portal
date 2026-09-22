@@ -7,9 +7,12 @@ import '../core/offline/sync_client.dart';
 import '../core/storage/secure_store.dart';
 import '../core/storage/session_store.dart';
 import '../core/c2o/c2o_asset_resolver.dart';
+import '../core/floorplan/floor_plan_image_cache.dart';
+import '../data/asset_repository.dart';
 import '../data/asset_tag_issue_repository.dart';
 import '../data/auth_repository.dart';
 import '../data/c2o_field_verification_repository.dart';
+import '../data/floor_plan_repository.dart';
 import '../data/notifications_repository.dart';
 import '../data/technician_location_repository.dart';
 
@@ -57,6 +60,21 @@ final c2oFieldVerificationRepositoryProvider = Provider<C2oFieldVerificationRepo
 
 final assetTagIssueRepositoryProvider = Provider<AssetTagIssueRepository>(
   (ref) => AssetTagIssueRepository(ref.watch(syncClientProvider)),
+);
+
+final assetRepositoryProvider = Provider<AssetRepository>(
+  (ref) => AssetRepository(ref.watch(syncClientProvider)),
+);
+
+/// FR-2.8 — floor+pin metadata (small JSON, rides the sync cache).
+final floorPlanRepositoryProvider = Provider<FloorPlanRepository>(
+  (ref) => FloorPlanRepository(ref.watch(syncClientProvider)),
+);
+
+/// FR-2.8 — the plan image itself (large binary, its own on-disk cache;
+/// see [FloorPlanImageCache]'s doc comment for why it is separate).
+final floorPlanImageCacheProvider = Provider<FloorPlanImageCache>(
+  (ref) => FloorPlanImageCache(),
 );
 
 /// FR-1.1 — offline-first resolve of a scanned c2o tag.

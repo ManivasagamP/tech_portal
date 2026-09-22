@@ -225,15 +225,11 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     });
   }
 
-  /// Convenience link back to the asset's existing public web page — a
-  /// deeper detail view than this app has (FR-2's screen isn't built yet),
-  /// reusing what the web tech portal already ships. `push`, not
-  /// `pushReplacement`, so continuous mode (FR-1.2) is still there,
-  /// scanning, when the technician backs out of the browser.
-  void _openAssetWeb(String assetId, String? name) {
-    context.push(
-      Routes.webPage('${Env.webBaseUrl}/public/assets/$assetId', title: name),
-    );
+  /// FR-2 — opens the native detail screen for a resolved scan. `push`, not
+  /// `pushReplacement`, so continuous mode (FR-1.2) is still there, scanning,
+  /// when the technician backs out.
+  void _openAssetDetail(String assetId, String? name) {
+    context.push(Routes.assetDetail(assetId));
   }
 
   @override
@@ -385,7 +381,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
               ],
               if (result == null && _c2oHistory.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                _C2oSessionStrip(history: _c2oHistory, onOpenWeb: _openAssetWeb),
+                _C2oSessionStrip(history: _c2oHistory, onOpenDetail: _openAssetDetail),
               ],
             ],
           ),
@@ -753,14 +749,14 @@ class _C2oScanEntry {
 /// what "queues without returning to a list" (FR-1.2) looks like without a
 /// separate list screen.
 class _C2oSessionStrip extends StatelessWidget {
-  const _C2oSessionStrip({required this.history, required this.onOpenWeb});
+  const _C2oSessionStrip({required this.history, required this.onOpenDetail});
 
   final List<_C2oScanEntry> history;
 
-  /// Opens a resolved entry's public web page. Only ever called for a
+  /// Opens a resolved entry's FR-2 detail screen. Only ever called for a
   /// [C2oResolved] entry — there is nothing to open for a mismatch, a
   /// not-found, or a needs-signal outcome.
-  final void Function(String assetId, String? name) onOpenWeb;
+  final void Function(String assetId, String? name) onOpenDetail;
 
   @override
   Widget build(BuildContext context) {
@@ -840,7 +836,7 @@ class _C2oSessionStrip extends StatelessWidget {
                             // A bit more than the 14px dot itself, so a
                             // gloved thumb can actually hit it.
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => onOpenWeb(
+                            onTap: () => onOpenDetail(
                               outcome.assetId,
                               outcome.claims['asset'] is Map
                                   ? outcome.claims['asset']['assetName']?.toString()

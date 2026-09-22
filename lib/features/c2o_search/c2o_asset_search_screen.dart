@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../app/env.dart';
 import '../../app/router.dart';
 import '../../core/c2o/assigned_assets.dart';
 import '../../core/c2o/c2o_asset_search.dart';
@@ -246,16 +245,21 @@ class _AssetDetailSheetState extends ConsumerState<_AssetDetailSheet> {
                 value: [building, space].where((v) => v != null && v.isNotEmpty).join(' — '),
               ),
             const SizedBox(height: 4),
-            // Convenience link to the asset's existing public web page — a
-            // deeper detail view than this app has (FR-2's screen isn't
-            // built yet), reusing what the web tech portal already ships.
+            // FR-2 — the full identity/location/nameplate/warranty/findings
+            // screen, built off the same cached scan payload this sheet
+            // already has a slice of. Deliberately NOT written into the
+            // offline cache here — `cached` may be a thin entry built from
+            // an assigned work order (FR-1.6 scoping) rather than a real
+            // scan, and the cache's merge rule prefers whatever is already
+            // in it over a fresh assigned-order read, so writing a thin
+            // entry there would permanently shadow better data on every
+            // later search. AssetDetailScreen falls back to the same
+            // assigned-orders lookup itself instead.
             TextButton.icon(
-              onPressed: () => context.push(
-                Routes.webPage('${Env.webBaseUrl}/public/assets/${cached.assetId}', title: name),
-              ),
+              onPressed: () => context.push(Routes.assetDetail(cached.assetId)),
               style: TextButton.styleFrom(padding: EdgeInsets.zero, alignment: Alignment.centerLeft),
-              icon: const Icon(LucideIcons.externalLink, size: 14),
-              label: AppText('search.open_in_browser'.getString(context)),
+              icon: const Icon(LucideIcons.fileText, size: 14),
+              label: AppText('search.view_full_details'.getString(context)),
             ),
             const SizedBox(height: 8),
             const Divider(),

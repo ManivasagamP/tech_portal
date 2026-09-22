@@ -23,21 +23,38 @@ List<CachedC2oAsset> assignedAssetsFrom(List<MaintenanceRecord> records) {
     final rawAsset = record.raw['asset'];
     final asset = rawAsset is Map ? Map<String, dynamic>.from(rawAsset) : const <String, dynamic>{};
 
+    final referenceId = _firstString([
+      asset['supplierTagNumber'],
+      asset['assetReferenceId'],
+      asset['tagNumber'],
+      record.referenceId,
+    ]);
+
     byId[assetId] = CachedC2oAsset(
       assetId: assetId,
-      assetReferenceId: _firstString([
-        asset['supplierTagNumber'],
-        asset['assetReferenceId'],
-        asset['tagNumber'],
-        record.referenceId,
-      ]),
+      assetReferenceId: referenceId,
       claims: {
         'asset': {
+          // Required by [AssetDetail.fromClaims] (FR-2) to identify the
+          // row at all — easy to lose since nothing in *this* shape reads
+          // it back out, unlike every other field here.
+          'id': assetId,
+          // Duplicated from the outer [CachedC2oAsset.assetReferenceId] —
+          // FR-2's identity block reads it from inside claims, not off the
+          // cache row, and without it an asset with no name at all (some
+          // real seed data has the name folded into `location` instead of
+          // its own field) falls all the way back to a raw uuid instead of
+          // this human-readable one.
+          'assetReferenceId': referenceId,
           'assetName': _firstString([asset['assetName'], asset['name'], record.assetName]),
+          'type': asset['type']?.toString(),
+          'category': asset['category']?.toString(),
+          'imageUrl': asset['imageUrl']?.toString(),
           'manufacturer': asset['manufacturer']?.toString(),
           'model': asset['model']?.toString(),
           'serialNumber': _firstString([asset['serialNumber'], asset['serial']]),
           'supplierTagNumber': _firstString([asset['supplierTagNumber'], asset['tagNumber']]),
+          'condition': asset['condition']?.toString(),
           'space': _firstString([asset['space'], record.location]),
           'building': asset['building']?.toString(),
           'floor': asset['floor']?.toString(),

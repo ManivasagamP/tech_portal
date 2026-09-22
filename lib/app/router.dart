@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/asset_detail/asset_detail_screen.dart';
 import '../features/c2o_search/c2o_asset_search_screen.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/floor_plan/floor_plan_screen.dart';
 import '../features/inspection/inspection_form_screen.dart';
 import '../features/inspection/inspection_list_screen.dart';
 import '../features/invites/invites_screen.dart';
@@ -41,6 +43,26 @@ abstract final class Routes {
   static String orderDetail(String type, String id) => '/orders/$type/$id';
   static String inspectionDetail(String id) => '/inspections/$id';
   static String twin(String assetId) => '/twin/$assetId';
+  static String assetDetail(String assetId) => '/asset/$assetId';
+
+  /// FR-2.8. [assetId] is a query param (not the path) so the floor plan
+  /// image can stay cached under one key per floor regardless of which
+  /// asset on it was opened from.
+  static String floorPlan(
+    String floorId, {
+    required String assetId,
+    String? assetName,
+    String? assetReferenceId,
+    String? assetType,
+  }) {
+    final query = {
+      'assetId': assetId,
+      'name': ?assetName,
+      'ref': ?assetReferenceId,
+      'type': ?assetType,
+    };
+    return Uri(path: '/floor-plan/$floorId', queryParameters: query).toString();
+  }
 
   /// The built-in browser. The address is a query parameter rather than a path
   /// segment so slashes in it survive.
@@ -195,11 +217,29 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/asset/:assetId',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => AssetDetailScreen(
+          assetId: state.pathParameters['assetId'] ?? '',
+        ),
+      ),
+      GoRoute(
         path: '/twin/:assetId',
         parentNavigatorKey: _rootKey,
         builder: (context, state) => TwinScreen(
           assetId: state.pathParameters['assetId'] ?? '',
           assetName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: '/floor-plan/:floorId',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => FloorPlanScreen(
+          floorId: state.pathParameters['floorId'] ?? '',
+          assetId: state.uri.queryParameters['assetId'] ?? '',
+          assetName: state.uri.queryParameters['name'],
+          assetReferenceId: state.uri.queryParameters['ref'],
+          assetType: state.uri.queryParameters['type'],
         ),
       ),
     ],
