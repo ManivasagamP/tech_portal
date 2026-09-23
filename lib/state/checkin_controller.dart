@@ -64,6 +64,11 @@ class CheckInController extends Notifier<CheckInState> {
           .updateLocation(position.latitude, position.longitude);
       await ref.read(sessionStoreProvider).clearRequestLocation();
       state = state.copyWith(required: false, isChecking: false, clearError: true);
+      // A stale fix is exactly what stopped `flushQueue` mid-run on a 428
+      // (see `SyncClient.flushQueue`) — resume it now instead of leaving a
+      // shift's queued checks stuck until the technician happens to open
+      // Sync Center.
+      unawaited(ref.read(syncClientProvider).flushQueue());
     } on CaptureFailure catch (e) {
       state = state.copyWith(isChecking: false, error: e.message);
     } on ApiFailure catch (e) {

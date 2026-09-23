@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,15 +44,34 @@ class TechnicianShell extends ConsumerStatefulWidget {
   ConsumerState<TechnicianShell> createState() => _TechnicianShellState();
 }
 
-class _TechnicianShellState extends ConsumerState<TechnicianShell> {
+class _TechnicianShellState extends ConsumerState<TechnicianShell>
+    with WidgetsBindingObserver {
   bool _expiryShown = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(syncClientProvider).startAutoFlush();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Backstop alongside the connectivity stream + poll timer in
+  // `SyncClient.startAutoFlush`: coming back to the foreground is exactly
+  // when a technician expects "did that sync yet" to already be true, and
+  // it's a free, reliable connectivity re-check on its own.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(syncClientProvider).flushQueue());
+    }
   }
 
   Future<void> _showSessionExpired() async {

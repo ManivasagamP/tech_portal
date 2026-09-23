@@ -27,7 +27,8 @@ Future<void> main() async {
 
   final secureStore = SecureStore();
   final sessionStore = await SessionStore.open();
-  final offlineDb = await OfflineDb.open();
+  final dbPassphrase = await secureStore.getOrCreateDbPassphrase();
+  final offlineDb = await OfflineDb.open(passphrase: dbPassphrase);
   final api = ApiClient(
     secureStore: secureStore,
     baseUrl: sessionStore.readBaseUrlOverride() ?? Env.defaultApiBaseUrl,

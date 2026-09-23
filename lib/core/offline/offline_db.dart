@@ -2,7 +2,62 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
-import 'package:sqflite/sqflite.dart';
+// FR-4.1/NFR-1 — SQLCipher build of sqflite, same API surface, so this is
+// the only file in the app that needs to know the store is encrypted.
+import 'package:sqflite_sqlcipher/sqflite.dart';
+
+/// One queued upload inside a [PendingMutation] — a photo, a voice note, a
+/// face capture. Uploaded independently on flush and its own [placeholder]
+/// in the mutation body substituted with the resulting URL; [uploadedUrl] is
+/// persisted back to the row the moment that upload succeeds (FR-4.7), so a
+/// later retry on the same mutation — another attachment failing, a 5xx on
+/// the request itself, the app getting killed mid-flush — does not re-upload
+/// bytes that already landed.
+class PendingAttachment {
+  const PendingAttachment({
+    required this.bytes,
+    required this.fileName,
+    required this.field,
+    required this.placeholder,
+    this.uploadedUrl,
+  });
+
+  final Uint8List bytes;
+  final String fileName;
+
+  /// `file` (POST /api/upload/file) or `image` (POST /api/upload/image).
+  final String field;
+
+  /// Token inside the mutation body replaced by the uploaded URL.
+  final String placeholder;
+
+  final String? uploadedUrl;
+
+  factory PendingAttachment.fromJson(Map<String, dynamic> json) =>
+      PendingAttachment(
+        bytes: base64Decode(json['bytesBase64'] as String),
+        fileName: json['fileName'] as String,
+        field: json['field'] as String,
+        placeholder: json['placeholder'] as String,
+        uploadedUrl: json['uploadedUrl'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'bytesBase64': base64Encode(bytes),
+    'fileName': fileName,
+    'field': field,
+    'placeholder': placeholder,
+    'uploadedUrl': ?uploadedUrl,
+  };
+
+  PendingAttachment withUploadedUrl(String url) => PendingAttachment(
+    bytes: bytes,
+    fileName: fileName,
+    field: field,
+    placeholder: placeholder,
+    uploadedUrl: url,
+  );
+}
 
 /// Mirrors the web portal's IndexedDB stores: a mutation queue, a GET cache, a
 /// meta table and a capped conflict log.
@@ -15,10 +70,7 @@ class PendingMutation {
     required this.label,
     required this.attempts,
     required this.createdAt,
-    this.attachment,
-    this.attachmentName,
-    this.attachmentField,
-    this.placeholder,
+    this.attachments = const [],
     this.entityType,
     this.entityId,
   });
@@ -30,14 +82,11 @@ class PendingMutation {
   final String label;
   final int attempts;
   final DateTime createdAt;
-  final Uint8List? attachment;
-  final String? attachmentName;
 
-  /// `file` (POST /api/upload/file) or `image` (POST /api/upload/image).
-  final String? attachmentField;
-
-  /// Token inside [body] that gets replaced by the uploaded URL on flush.
-  final String? placeholder;
+  /// FR-4.7 — zero or more queued uploads this mutation's body references by
+  /// placeholder. Most mutations have none; a field verification can have up
+  /// to 8 (one per photo), each uploaded and resolved independently.
+  final List<PendingAttachment> attachments;
 
   /// The order this write belongs to — an [OrderType.name], not its slug —
   /// and its record id. Stamped by the repository at enqueue time rather than
@@ -49,23 +98,46 @@ class PendingMutation {
   final String? entityType;
   final String? entityId;
 
-  bool get hasAttachment => attachment != null && attachmentField != null;
+  bool get hasAttachments => attachments.isNotEmpty;
 
-  factory PendingMutation.fromRow(Map<String, Object?> row) => PendingMutation(
-    clientMutationId: row['client_mutation_id'] as String,
-    method: row['method'] as String,
-    url: row['url'] as String,
-    body: row['body'] == null ? null : jsonDecode(row['body'] as String),
-    label: row['label'] as String? ?? 'Change',
-    attempts: row['attempts'] as int? ?? 0,
-    createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
-    attachment: row['attachment'] as Uint8List?,
-    attachmentName: row['attachment_name'] as String?,
-    attachmentField: row['attachment_field'] as String?,
-    placeholder: row['placeholder'] as String?,
-    entityType: row['entity_type'] as String?,
-    entityId: row['entity_id'] as String?,
-  );
+  factory PendingMutation.fromRow(Map<String, Object?> row) {
+    final attachmentsJson = row['attachments_json'] as String?;
+    List<PendingAttachment> attachments;
+    if (attachmentsJson != null && attachmentsJson.isNotEmpty) {
+      attachments = (jsonDecode(attachmentsJson) as List)
+          .map((e) => PendingAttachment.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } else {
+      // A row queued before the FR-4.7 migration — its one attachment (if
+      // any) still lives in the old singular columns rather than
+      // `attachments_json`. Read it back the same way so an in-flight queue
+      // survives the app update instead of silently dropping its photo.
+      final legacyBytes = row['attachment'] as Uint8List?;
+      final legacyField = row['attachment_field'] as String?;
+      attachments = legacyBytes != null && legacyField != null
+          ? [
+              PendingAttachment(
+                bytes: legacyBytes,
+                fileName: row['attachment_name'] as String? ?? 'attachment',
+                field: legacyField,
+                placeholder: row['placeholder'] as String? ?? '',
+              ),
+            ]
+          : const [];
+    }
+    return PendingMutation(
+      clientMutationId: row['client_mutation_id'] as String,
+      method: row['method'] as String,
+      url: row['url'] as String,
+      body: row['body'] == null ? null : jsonDecode(row['body'] as String),
+      label: row['label'] as String? ?? 'Change',
+      attempts: row['attempts'] as int? ?? 0,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(row['created_at'] as int),
+      attachments: attachments,
+      entityType: row['entity_type'] as String?,
+      entityId: row['entity_id'] as String?,
+    );
+  }
 
   Map<String, Object?> toRow() => {
     'client_mutation_id': clientMutationId,
@@ -75,10 +147,9 @@ class PendingMutation {
     'label': label,
     'attempts': attempts,
     'created_at': createdAt.millisecondsSinceEpoch,
-    'attachment': attachment,
-    'attachment_name': attachmentName,
-    'attachment_field': attachmentField,
-    'placeholder': placeholder,
+    'attachments_json': attachments.isEmpty
+        ? null
+        : jsonEncode(attachments.map((a) => a.toJson()).toList()),
     'entity_type': entityType,
     'entity_id': entityId,
   };
@@ -240,7 +311,47 @@ abstract interface class TagIssueLog {
   Future<List<TagIssueReport>> listTagIssueReports();
 }
 
-class OfflineDb implements C2oAssetCache, TagIssueLog {
+/// FR-4.2 — the in-progress FR-3 capture form, autosaved continuously so a
+/// force-quit or an OS kill (a phone call, low memory, a crash) never costs
+/// the technician a half-filled check. One draft per asset; a fresh
+/// [saveDraft] for the same [assetId] replaces the last one rather than
+/// accumulating history — this is a save slot, not a log.
+class VerificationDraft {
+  const VerificationDraft({
+    required this.assetId,
+    required this.payload,
+    required this.updatedAt,
+  });
+
+  final String assetId;
+
+  /// Opaque to this layer — the screen owns the shape (result, observed
+  /// fields, photos as base64, notes, the reinspection flag/reason, the GPS
+  /// fix). Keeping it schemaless here means a new FR-3 field never needs a
+  /// migration just to survive a crash.
+  final Map<String, dynamic> payload;
+  final DateTime updatedAt;
+
+  factory VerificationDraft.fromRow(Map<String, Object?> row) => VerificationDraft(
+    assetId: row['asset_id'] as String,
+    payload: Map<String, dynamic>.from(jsonDecode(row['payload'] as String) as Map),
+    updatedAt: DateTime.fromMillisecondsSinceEpoch(row['updated_at'] as int),
+  );
+
+  Map<String, Object?> toRow() => {
+    'asset_id': assetId,
+    'payload': jsonEncode(payload),
+    'updated_at': updatedAt.millisecondsSinceEpoch,
+  };
+}
+
+abstract interface class VerificationDraftStore {
+  Future<void> saveDraft(String assetId, Map<String, dynamic> payload);
+  Future<VerificationDraft?> getDraft(String assetId);
+  Future<void> deleteDraft(String assetId);
+}
+
+class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
   OfflineDb._(this._db);
 
   static const _fileName = 'fusion_eco_offline.db';
@@ -248,11 +359,12 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
 
   final Database _db;
 
-  static Future<OfflineDb> open() async {
+  static Future<OfflineDb> open({required String passphrase}) async {
     final dir = await getDatabasesPath();
     final db = await openDatabase(
       p.join(dir, _fileName),
-      version: 4,
+      password: passphrase,
+      version: 7,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE pending_mutations (
@@ -263,16 +375,16 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
             label TEXT,
             attempts INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
-            attachment BLOB,
-            attachment_name TEXT,
-            attachment_field TEXT,
-            placeholder TEXT,
+            attachments_json TEXT,
             entity_type TEXT,
             entity_id TEXT
           )
         ''');
         await db.execute(
           'CREATE INDEX idx_pending_created_at ON pending_mutations (created_at)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_pending_entity ON pending_mutations (entity_type, entity_id)',
         );
         await db.execute('''
           CREATE TABLE cached_entities (
@@ -303,12 +415,17 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
           'CREATE INDEX idx_c2o_assets_reference ON c2o_assets (asset_reference_id)',
         );
         await db.execute(_createTagIssueReportsSql);
+        await db.execute(_createDraftsSql);
       },
       // v1 → v2: which order a queued write belongs to, for the Sync Center
       // list. Existing rows just come back with both columns null — they
       // still show up in the list, minus the order grouping.
       // v2 → v3: the c2o field-verification asset cache (FR-1.1).
       // v3 → v4: local tag-missing/unreadable reports (FR-1.7).
+      // v4 → v5: FR-3 capture-form drafts (FR-4.2).
+      // v5 → v6: multi-attachment queue rows, one upload per photo (FR-4.7).
+      // v6 → v7: index the Sync Center's per-entity grouping (FR-4.9 — also
+      // the first migration exercised live against a populated queue).
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
@@ -326,6 +443,19 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
         }
         if (oldVersion < 4) {
           await db.execute(_createTagIssueReportsSql);
+        }
+        if (oldVersion < 5) {
+          await db.execute(_createDraftsSql);
+        }
+        if (oldVersion < 6) {
+          await db.execute(
+            'ALTER TABLE pending_mutations ADD COLUMN attachments_json TEXT',
+          );
+        }
+        if (oldVersion < 7) {
+          await db.execute(
+            'CREATE INDEX idx_pending_entity ON pending_mutations (entity_type, entity_id)',
+          );
         }
       },
     );
@@ -352,6 +482,14 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
       reason TEXT NOT NULL,
       note TEXT,
       reported_at INTEGER NOT NULL
+    )
+  ''';
+
+  static const _createDraftsSql = '''
+    CREATE TABLE verification_drafts (
+      asset_id TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
     )
   ''';
 
@@ -387,6 +525,23 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
   Future<void> bumpAttempts(String id, int attempts) => _db.update(
     'pending_mutations',
     {'attempts': attempts},
+    where: 'client_mutation_id = ?',
+    whereArgs: [id],
+  );
+
+  /// FR-4.7 — called right after each individual attachment upload succeeds
+  /// during a flush, so a photo that already landed is never re-sent by a
+  /// later retry on the same mutation.
+  Future<void> updateMutationAttachments(
+    String id,
+    List<PendingAttachment> attachments,
+  ) => _db.update(
+    'pending_mutations',
+    {
+      'attachments_json': attachments.isEmpty
+          ? null
+          : jsonEncode(attachments.map((a) => a.toJson()).toList()),
+    },
     where: 'client_mutation_id = ?',
     whereArgs: [id],
   );
@@ -495,6 +650,35 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
     return rows.map(TagIssueReport.fromRow).toList();
   }
 
+  @override
+  Future<void> saveDraft(String assetId, Map<String, dynamic> payload) => _db.insert(
+    'verification_drafts',
+    VerificationDraft(
+      assetId: assetId,
+      payload: payload,
+      updatedAt: DateTime.now(),
+    ).toRow(),
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+
+  @override
+  Future<VerificationDraft?> getDraft(String assetId) async {
+    final rows = await _db.query(
+      'verification_drafts',
+      where: 'asset_id = ?',
+      whereArgs: [assetId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : VerificationDraft.fromRow(rows.first);
+  }
+
+  @override
+  Future<void> deleteDraft(String assetId) => _db.delete(
+    'verification_drafts',
+    where: 'asset_id = ?',
+    whereArgs: [assetId],
+  );
+
   Future<void> wipe() async {
     await _db.delete('pending_mutations');
     await _db.delete('cached_entities');
@@ -502,5 +686,6 @@ class OfflineDb implements C2oAssetCache, TagIssueLog {
     await _db.delete('conflicts');
     await _db.delete('c2o_assets');
     await _db.delete('tag_issue_reports');
+    await _db.delete('verification_drafts');
   }
 }

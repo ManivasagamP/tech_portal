@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:technician_portal/data/field_verification_repository.dart';
 
@@ -35,21 +37,28 @@ void main() {
       expect(json['result'], 'inaccessible');
     });
 
-    test('photos serialize as {dataBase64, name, contentType} entries', () {
-      final json = const FieldVerificationRequest(
+    test('photos serialize as {url, name, contentType} placeholders — FR-4.7 uploads them separately', () {
+      final request = FieldVerificationRequest(
         result: VerificationResult.verified,
         photos: [
-          VerificationPhoto(dataUrl: 'data:image/jpeg;base64,AAAA', fileName: 'a.jpg', contentType: 'image/jpeg'),
+          VerificationPhoto(bytes: Uint8List.fromList([1, 2, 3]), fileName: 'a.jpg', contentType: 'image/jpeg'),
         ],
-      ).toJson();
+      );
+      final json = request.toJson();
 
       final photos = json['photos'] as List;
       expect(photos, hasLength(1));
       expect(photos.single, {
-        'dataBase64': 'data:image/jpeg;base64,AAAA',
+        'url': '__pending_photo_0__',
         'name': 'a.jpg',
         'contentType': 'image/jpeg',
       });
+
+      // The placeholder above must match the attachment SyncClient uploads.
+      final attachments = request.toAttachments();
+      expect(attachments, hasLength(1));
+      expect(attachments.single.placeholder, '__pending_photo_0__');
+      expect(attachments.single.field, 'image');
     });
 
     test('lat/lng only appear together, with accuracy folded into geo', () {

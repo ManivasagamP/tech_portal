@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SecureStore {
@@ -8,6 +11,13 @@ class SecureStore {
             );
 
   static const _tokenKey = 'token';
+
+  /// FR-4.1/NFR-1 — the SQLCipher passphrase for `OfflineDb`, which holds
+  /// cached assets, the mutation queue and queued photo blobs. Generated
+  /// once per install and kept in the platform keystore (Android
+  /// EncryptedSharedPreferences / iOS Keychain) — never in the database
+  /// file itself, or on the wire, or in app code.
+  static const _dbPassphraseKey = 'offline_db_passphrase';
 
   final FlutterSecureStorage _storage;
   String? _cachedToken;
@@ -20,6 +30,22 @@ class SecureStore {
   Future<void> writeToken(String token) async {
     _cachedToken = token;
     await _storage.write(key: _tokenKey, value: token);
+  }
+
+  /// Returns the existing passphrase, or mints and stores a fresh 256-bit
+  /// one on first launch. Losing this (a keystore wipe, an uninstall) makes
+  /// the existing database file unreadable rather than silently corrupting
+  /// it — `OfflineDb.open()` falling over in that case means "start a fresh
+  /// queue," the same outcome as a plain uninstall already has today.
+  Future<String> getOrCreateDbPassphrase() async {
+    final existing = await _storage.read(key: _dbPassphraseKey);
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final random = Random.secure();
+    final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+    final passphrase = base64UrlEncode(bytes);
+    await _storage.write(key: _dbPassphraseKey, value: passphrase);
+    return passphrase;
   }
 
   Future<void> clear() async {

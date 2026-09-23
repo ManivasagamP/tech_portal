@@ -86,6 +86,7 @@ class SyncClient {
   final Connectivity _connectivity;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  Timer? _pollTimer;
   bool _flushing = false;
 
   OfflineDb get db => _db;
@@ -96,18 +97,33 @@ class SyncClient {
     return results.every((r) => r == ConnectivityResult.none);
   }
 
-  /// Flush on start and whenever connectivity comes back.
+  /// Flush on start, whenever connectivity comes back, and on a 20s poll.
+  ///
+  /// The connectivity stream alone isn't reliable enough on its own —
+  /// confirmed live on device: `onConnectivityChanged` can fail to emit a
+  /// clean offline→online transition when a low-capability network (e.g. an
+  /// IMS-only mobile radio with no general internet) lingers through the
+  /// "offline" window, so the event that's supposed to wake the queue back
+  /// up never fires. `flushQueue` is cheap to no-op (an early `isOffline` /
+  /// empty-queue return), so polling it is safe to run continuously as a
+  /// backstop rather than trusting the stream to be the only trigger.
   void startAutoFlush() {
     _connectivitySub ??= _connectivity.onConnectivityChanged.listen((results) {
       final online = results.any((r) => r != ConnectivityResult.none);
       if (online) unawaited(flushQueue());
     });
+    _pollTimer ??= Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => unawaited(flushQueue()),
+    );
     unawaited(flushQueue());
   }
 
   Future<void> dispose() async {
     await _connectivitySub?.cancel();
     _connectivitySub = null;
+    _pollTimer?.cancel();
+    _pollTimer = null;
   }
 
   String cacheKey(String url, Map<String, dynamic>? query) {
@@ -150,10 +166,12 @@ class SyncClient {
     dynamic data,
     required String label,
     QueuedAttachment? attachment,
+    List<QueuedAttachment> attachments = const [],
     String? entityType,
     String? entityId,
   }) async {
     final mutationId = _api.newMutationId();
+    final allAttachments = [...attachments, ?attachment];
 
     if (await isOffline) {
       await _enqueue(
@@ -162,7 +180,7 @@ class SyncClient {
         url,
         data,
         label,
-        attachment,
+        allAttachments,
         entityType,
         entityId,
       );
@@ -171,13 +189,13 @@ class SyncClient {
 
     try {
       var body = data;
-      if (attachment != null) {
+      for (final a in allAttachments) {
         final uploadedUrl = await uploadBytes(
-          bytes: attachment.bytes,
-          fileName: attachment.fileName,
-          field: attachment.field,
+          bytes: a.bytes,
+          fileName: a.fileName,
+          field: a.field,
         );
-        body = _substitute(body, attachment.placeholder, uploadedUrl);
+        body = _substitute(body, a.placeholder, uploadedUrl);
       }
       final response = await _api.request(
         method,
@@ -185,6 +203,7 @@ class SyncClient {
         data: body,
         mutationId: mutationId,
       );
+      await _recordCaptureConflict(response.data, label: label, url: url);
       return SyncedWrite(synced: true, data: response.data);
     } on NetworkFailure {
       await _enqueue(
@@ -193,7 +212,7 @@ class SyncClient {
         url,
         data,
         label,
-        attachment,
+        allAttachments,
         entityType,
         entityId,
       );
@@ -207,7 +226,7 @@ class SyncClient {
     String url,
     dynamic data,
     String label,
-    QueuedAttachment? attachment,
+    List<QueuedAttachment> attachments,
     String? entityType,
     String? entityId,
   ) async {
@@ -220,10 +239,15 @@ class SyncClient {
         label: label,
         attempts: 0,
         createdAt: DateTime.now(),
-        attachment: attachment?.bytes,
-        attachmentName: attachment?.fileName,
-        attachmentField: attachment?.field,
-        placeholder: attachment?.placeholder,
+        attachments: [
+          for (final a in attachments)
+            PendingAttachment(
+              bytes: a.bytes,
+              fileName: a.fileName,
+              field: a.field,
+              placeholder: a.placeholder,
+            ),
+        ],
         entityType: entityType,
         entityId: entityId,
       ),
@@ -270,25 +294,59 @@ class SyncClient {
         final mutation = pending[i];
         try {
           var body = mutation.body;
-          if (mutation.hasAttachment) {
-            final uploadedUrl = await uploadBytes(
-              bytes: mutation.attachment!,
-              fileName: mutation.attachmentName ?? 'attachment',
-              field: mutation.attachmentField!,
-            );
-            body = _substitute(body, mutation.placeholder, uploadedUrl);
+          if (mutation.hasAttachments) {
+            // FR-4.7 — each attachment uploads and resolves independently;
+            // one already carrying `uploadedUrl` (a prior partial attempt on
+            // this same mutation) is skipped rather than re-sent.
+            var current = mutation.attachments;
+            for (var j = 0; j < current.length; j++) {
+              var a = current[j];
+              if (a.uploadedUrl == null) {
+                final uploadedUrl = await uploadBytes(
+                  bytes: a.bytes,
+                  fileName: a.fileName,
+                  field: a.field,
+                );
+                a = a.withUploadedUrl(uploadedUrl);
+                current = [
+                  for (var k = 0; k < current.length; k++)
+                    k == j ? a : current[k],
+                ];
+                await _db.updateMutationAttachments(
+                  mutation.clientMutationId,
+                  current,
+                );
+              }
+              body = _substitute(body, a.placeholder, a.uploadedUrl!);
+            }
           }
-          await _api.request(
+          final response = await _api.request(
             mutation.method,
             mutation.url,
             data: body,
             mutationId: mutation.clientMutationId,
+          );
+          await _recordCaptureConflict(
+            response.data,
+            label: mutation.label,
+            url: mutation.url,
           );
           await _db.deleteMutation(mutation.clientMutationId);
           changed = true;
         } on NetworkFailure {
           break;
         } on HttpFailure catch (e) {
+          // The 428 location-gate trap: `middleware/auth.ts` refuses every
+          // mutating request once the technician's last GPS fix is stale.
+          // Every mutation behind this one would fail the exact same way
+          // until a fresh fix is captured, so this stops the run — same as
+          // a NetworkFailure — rather than dropping a whole shift's queued
+          // checks as unrecoverable 4xxs. `ApiClient`'s interceptor already
+          // fired `onLocationRequired`, which `LocationCheckInGate` turns
+          // into a blocking check-in prompt; `CheckInController.checkIn()`
+          // resumes this queue once a fix lands.
+          if (e.isLocationRequired) break;
+
           final attempts = mutation.attempts + 1;
           final drop =
               attempts >= Env.maxMutationAttempts ||
@@ -349,6 +407,28 @@ class SyncClient {
       );
     }
     return url;
+  }
+
+  /// FR-4.8 — a successful verify response can carry a `captureConflict`:
+  /// the register moved between when the technician looked at it and when
+  /// this request actually reached the server (the whole point of an
+  /// offline queue is that gap can be hours). The write already succeeded —
+  /// this is purely informational, so it lands in the same local conflict
+  /// log as a dropped mutation but flagged `dropped: false`, which the Sync
+  /// Center renders as "flagged" rather than "could not be saved".
+  Future<void> _recordCaptureConflict(
+    dynamic responseData, {
+    required String label,
+    required String url,
+  }) async {
+    final body = responseData is Map
+        ? (responseData['data'] is Map ? responseData['data'] : responseData)
+        : null;
+    final conflict = body is Map ? body['captureConflict'] : null;
+    final message = conflict is Map ? conflict['message'] : null;
+    if (message is! String || message.isEmpty) return;
+    await _db.addConflict(label: label, url: url, reason: message, dropped: false);
+    _bus.notify();
   }
 
   dynamic _substitute(dynamic body, String? placeholder, String url) {

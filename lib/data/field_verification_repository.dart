@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../core/offline/sync_client.dart';
 
 /// FR-3.1 — one of five outcomes. Matches the server's enum exactly
@@ -10,25 +12,21 @@ enum VerificationResult { verified, mismatch, missing, damaged, inaccessible }
 enum ObservedCondition { good, fair, poor, damaged }
 
 /// A photo already captured and downscaled on-device (see
-/// `PhotoCapture.takeJobPhoto`), reduced to just what the verify endpoint's
-/// `photos[]` array wants — a data URL it strips the `data:...;base64,`
-/// prefix from itself.
+/// `PhotoCapture.takeJobPhoto`). FR-4.7 — carried as raw bytes rather than a
+/// base64 data URL: [FieldVerificationRequest] uploads each one separately
+/// through [SyncClient]'s attachment queue instead of inlining it into the
+/// verify request's JSON body, so one large photo cannot block (or have to
+/// be fully resent with) the rest of the check.
 class VerificationPhoto {
   const VerificationPhoto({
-    required this.dataUrl,
+    required this.bytes,
     required this.fileName,
     required this.contentType,
   });
 
-  final String dataUrl;
+  final Uint8List bytes;
   final String fileName;
   final String contentType;
-
-  Map<String, dynamic> toJson() => {
-    'dataBase64': dataUrl,
-    'name': fileName,
-    'contentType': contentType,
-  };
 }
 
 /// Pure request-shaping, separated from the network call below so it can be
@@ -47,6 +45,8 @@ class FieldVerificationRequest {
     this.gpsAccuracy,
     this.flagForReinspection = false,
     this.flagReason,
+    this.claimedSerial,
+    this.claimedTag,
   });
 
   final VerificationResult result;
@@ -54,6 +54,15 @@ class FieldVerificationRequest {
   final String? observedTag;
   final ObservedCondition? observedCondition;
   final String? notes;
+
+  /// FR-4.8 — the serial/tag the technician was shown as "Claimed" when they
+  /// opened this form (from whatever cached scan or route pack the screen
+  /// was reached from). Sent alongside the observation so the server can
+  /// tell "the register changed since capture" apart from "the crew's
+  /// observation disagrees with the register" — two different things that
+  /// happen to use the same two fields.
+  final String? claimedSerial;
+  final String? claimedTag;
 
   /// FR-3.11 — the crew could not finish this check (blocked access, missing
   /// tool, etc.) and wants the asset requeued for a return visit, regardless
@@ -71,18 +80,48 @@ class FieldVerificationRequest {
   final double? longitude;
   final double? gpsAccuracy;
 
+  /// FR-4.7 — each photo rides as a placeholder handed to [SyncClient],
+  /// substituted for the real upload URL once that photo lands (see
+  /// [toAttachments]), rather than inlining its bytes here.
+  static String _photoPlaceholder(int index) => '__pending_photo_${index}__';
+
   Map<String, dynamic> toJson() => {
     'result': result.name,
     'observedSerial': ?observedSerial,
     'observedTag': ?observedTag,
     'observedCondition': ?observedCondition?.name,
     'notes': ?notes,
-    if (photos.isNotEmpty) 'photos': photos.map((p) => p.toJson()).toList(),
+    if (photos.isNotEmpty)
+      'photos': [
+        for (var i = 0; i < photos.length; i++)
+          {
+            'url': _photoPlaceholder(i),
+            'name': photos[i].fileName,
+            'contentType': photos[i].contentType,
+          },
+      ],
     if (latitude != null && longitude != null)
       'geo': {'lat': latitude, 'lng': longitude, 'accuracy': ?gpsAccuracy},
     if (flagForReinspection) 'flagForReinspection': true,
     if (flagForReinspection) 'flagReason': ?flagReason,
+    if (claimedSerial != null || claimedTag != null)
+      'captureClaims': {
+        'serialNumber': ?claimedSerial,
+        'assetReferenceId': ?claimedTag,
+      },
   };
+
+  /// The queued upload for each entry in [photos], keyed to the same
+  /// placeholders [toJson] wrote into the request body.
+  List<QueuedAttachment> toAttachments() => [
+    for (var i = 0; i < photos.length; i++)
+      QueuedAttachment(
+        bytes: photos[i].bytes,
+        fileName: photos[i].fileName,
+        placeholder: _photoPlaceholder(i),
+        field: 'image',
+      ),
+  ];
 }
 
 /// Submits FR-3's capture form. Goes through [SyncClient] rather than the
@@ -102,5 +141,6 @@ class FieldVerificationRepository {
         label: 'Submit asset verification',
         entityType: 'Asset',
         entityId: assetId,
+        attachments: request.toAttachments(),
       );
 }

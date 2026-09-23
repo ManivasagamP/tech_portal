@@ -356,6 +356,7 @@
   "widgets.photo_counter": "%a من %a",
   "widgets.photo_load_error": "تعذر تحميل هذه الصورة.",
   "widgets.sync_conflict_title": "تعذر حفظ بعض التغييرات",
+  "widgets.capture_conflict_title": "تم وضع علامة عليها منذ التقاطها",
   "widgets.dismiss_all": "تجاهل الكل",
   "widgets.loading_workspace": "جارٍ تحميل مساحة عملك...",
   "widgets.loading_connecting": "جارٍ الاتصال…",

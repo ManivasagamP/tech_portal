@@ -356,6 +356,7 @@
   "widgets.photo_counter": "%a of %a",
   "widgets.photo_load_error": "This photo could not be loaded.",
   "widgets.sync_conflict_title": "Some changes could not be saved",
+  "widgets.capture_conflict_title": "Flagged since they were captured",
   "widgets.dismiss_all": "Dismiss all",
   "widgets.loading_workspace": "Loading your workspace...",
   "widgets.loading_connecting": "Connecting…",

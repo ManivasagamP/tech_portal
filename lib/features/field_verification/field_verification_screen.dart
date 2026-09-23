@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,14 +76,139 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
   var _scanningNameplate = false;
   var _submitting = false;
 
+  /// FR-4.2 — continuous autosave so a force-quit or an OS kill never costs a
+  /// half-filled check. Debounced rather than saved on every keystroke: a
+  /// draft that's a few hundred milliseconds stale is fine, hitting sqlite on
+  /// every character typed into Notes is not.
+  Timer? _autosaveTimer;
+  var _draftLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _observedSerial.addListener(_scheduleAutosave);
+    _observedTag.addListener(_scheduleAutosave);
+    _notes.addListener(_scheduleAutosave);
+    _flagReason.addListener(_scheduleAutosave);
+    unawaited(_loadDraft());
+  }
+
   @override
   void dispose() {
+    // A pending debounce still means unsaved edits — flush them rather than
+    // just cancelling, or backing out right after typing (well within the
+    // 600ms window) would silently drop what was just entered.
+    if (_autosaveTimer?.isActive ?? false) {
+      _autosaveTimer!.cancel();
+      unawaited(_saveDraft());
+    }
     _nameplateReader.dispose();
     _observedSerial.dispose();
     _observedTag.dispose();
     _notes.dispose();
     _flagReason.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDraft() async {
+    final draft = await ref.read(offlineDbProvider).getDraft(widget.assetId);
+    if (!mounted) return;
+    if (draft == null) {
+      // Nothing to restore — but the load attempt is done, so autosave can
+      // switch on. Without this, a brand new draft (the common case: no
+      // prior crash) would leave `_draftLoaded` false forever and every
+      // future edit on this screen would silently never be saved.
+      setState(() => _draftLoaded = true);
+      return;
+    }
+    final payload = draft.payload;
+
+    final result = payload['result'] as String?;
+    final condition = payload['condition'] as String?;
+    final photos = (payload['photos'] as List?) ?? const [];
+    final fix = payload['fix'] as Map<String, dynamic>?;
+
+    setState(() {
+      _result = result == null ? null : VerificationResult.values.byName(result);
+      _condition = condition == null ? null : ObservedCondition.values.byName(condition);
+      _observedSerial.text = payload['observedSerial'] as String? ?? '';
+      _observedTag.text = payload['observedTag'] as String? ?? '';
+      _notes.text = payload['notes'] as String? ?? '';
+      _flagReinspection = payload['flagForReinspection'] as bool? ?? false;
+      _flagReason.text = payload['flagReason'] as String? ?? '';
+      _photos
+        ..clear()
+        ..addAll(
+          photos.map(
+            (p) => CapturedPhoto(
+              bytes: base64Decode(p['bytesBase64'] as String),
+              fileName: p['fileName'] as String,
+            ),
+          ),
+        );
+      if (fix != null) {
+        _fix = CapturedLocation(
+          latitude: fix['latitude'] as double,
+          longitude: fix['longitude'] as double,
+          city: fix['city'] as String?,
+          district: fix['district'] as String?,
+        );
+      }
+      _draftLoaded = true;
+    });
+  }
+
+  /// Skips writing an all-empty draft — nothing worth surviving a crash for,
+  /// and it would otherwise leave a phantom "resume?" row for every asset a
+  /// technician merely opened and backed out of.
+  bool get _hasDraftableContent =>
+      _result != null ||
+      _condition != null ||
+      _observedSerial.text.trim().isNotEmpty ||
+      _observedTag.text.trim().isNotEmpty ||
+      _notes.text.trim().isNotEmpty ||
+      _flagReason.text.trim().isNotEmpty ||
+      _flagReinspection ||
+      _photos.isNotEmpty ||
+      _fix != null;
+
+  void _scheduleAutosave() {
+    // Ignore the burst of listener callbacks `_loadDraft`'s own setState
+    // fires while populating the controllers — that would just resave the
+    // draft it was reading a moment ago.
+    if (!_draftLoaded) return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 600), _saveDraft);
+  }
+
+  Future<void> _saveDraft() async {
+    if (!mounted) return;
+    final db = ref.read(offlineDbProvider);
+    if (!_hasDraftableContent) {
+      await db.deleteDraft(widget.assetId);
+      return;
+    }
+    await db.saveDraft(widget.assetId, {
+      'result': _result?.name,
+      'condition': _condition?.name,
+      'observedSerial': _observedSerial.text,
+      'observedTag': _observedTag.text,
+      'notes': _notes.text,
+      'flagForReinspection': _flagReinspection,
+      'flagReason': _flagReason.text,
+      'photos': [
+        for (final p in _photos)
+          {'bytesBase64': base64Encode(p.bytes), 'fileName': p.fileName},
+      ],
+      'fix': _fix == null
+          ? null
+          : {
+              'latitude': _fix!.latitude,
+              'longitude': _fix!.longitude,
+              'city': _fix!.city,
+              'district': _fix!.district,
+            },
+    });
   }
 
   /// FR-3.4/3.10 — the in-app camera (torch + level) rather than
@@ -93,6 +221,7 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
     ).push<CapturedPhoto>(MaterialPageRoute(builder: (_) => const CameraCaptureScreen()));
     if (photo == null || !mounted) return;
     setState(() => _photos.add(photo));
+    _scheduleAutosave();
   }
 
   Future<void> _annotatePhoto(int index) async {
@@ -101,7 +230,28 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
     );
     if (annotated != null && mounted) {
       setState(() => _photos[index] = annotated);
+      _scheduleAutosave();
     }
+  }
+
+  void _removePhoto(int index) {
+    setState(() => _photos.removeAt(index));
+    _scheduleAutosave();
+  }
+
+  void _setResult(VerificationResult result) {
+    setState(() => _result = result);
+    _scheduleAutosave();
+  }
+
+  void _setCondition(ObservedCondition condition) {
+    setState(() => _condition = condition);
+    _scheduleAutosave();
+  }
+
+  void _setFlagReinspection(bool value) {
+    setState(() => _flagReinspection = value);
+    _scheduleAutosave();
   }
 
   Future<void> _scanNameplate() async {
@@ -133,7 +283,10 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
     });
     try {
       final fix = await _location.current();
-      if (mounted) setState(() => _fix = fix);
+      if (mounted) {
+        setState(() => _fix = fix);
+        _scheduleAutosave();
+      }
     } on CaptureFailure catch (e) {
       if (mounted) setState(() => _locationError = e.message);
     } finally {
@@ -157,17 +310,26 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
         notes: _emptyToNull(_notes.text),
         photos: [
           for (final p in _photos)
-            VerificationPhoto(dataUrl: p.dataUrl, fileName: p.fileName, contentType: p.mimeType),
+            VerificationPhoto(bytes: p.bytes, fileName: p.fileName, contentType: p.mimeType),
         ],
         latitude: _fix?.latitude,
         longitude: _fix?.longitude,
         flagForReinspection: _flagReinspection,
         flagReason: _flagReinspection ? _emptyToNull(_flagReason.text) : null,
+        claimedSerial: widget.claimedSerial,
+        claimedTag: widget.claimedTag,
       );
 
       final write = await ref
           .read(fieldVerificationRepositoryProvider)
           .submit(widget.assetId, request);
+
+      // Queued offline or sent live, the check itself now owns this
+      // evidence — the draft that kept it alive across a crash has done its
+      // job and would otherwise resurrect a completed check as "unfinished"
+      // next time this asset is opened.
+      _autosaveTimer?.cancel();
+      await ref.read(offlineDbProvider).deleteDraft(widget.assetId);
 
       if (!mounted) return;
       final message = write.synced
@@ -204,7 +366,7 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
           children: [
             _SectionLabel('fieldVerify.result'.getString(context)),
             const SizedBox(height: 10),
-            _ResultGrid(value: _result, onChanged: (r) => setState(() => _result = r)),
+            _ResultGrid(value: _result, onChanged: _setResult),
             const SizedBox(height: 24),
 
             _SectionLabel('fieldVerify.observed'.getString(context)),
@@ -226,7 +388,7 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
 
             _SectionLabel('fieldVerify.condition'.getString(context)),
             const SizedBox(height: 10),
-            _ConditionRow(value: _condition, onChanged: (c) => setState(() => _condition = c)),
+            _ConditionRow(value: _condition, onChanged: _setCondition),
             const SizedBox(height: 24),
 
             _SectionLabel(
@@ -236,7 +398,7 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
             _PhotoGrid(
               photos: _photos,
               onAdd: _photos.length >= _maxPhotos ? null : _addPhoto,
-              onRemove: (i) => setState(() => _photos.removeAt(i)),
+              onRemove: _removePhoto,
               onAnnotate: _annotatePhoto,
             ),
             const SizedBox(height: 24),
@@ -262,7 +424,7 @@ class _FieldVerificationScreenState extends ConsumerState<FieldVerificationScree
 
             _ReinspectionCard(
               flagged: _flagReinspection,
-              onChanged: (v) => setState(() => _flagReinspection = v),
+              onChanged: _setFlagReinspection,
               reasonController: _flagReason,
             ),
             const SizedBox(height: 24),
