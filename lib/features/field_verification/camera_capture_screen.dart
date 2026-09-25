@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localization/flutter_localization.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -122,7 +123,12 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     setState(() => _capturing = true);
     try {
       final file = await controller.takePicture();
-      final bytes = await file.readAsBytes();
+      final rawBytes = await file.readAsBytes();
+      // FR-3.4 — downscale to 1600px on the long edge, same as every other
+      // capture path in the app (see downscaleJpeg's doc comment for why
+      // this one needs its own step). Off the main isolate: decoding and
+      // re-encoding a full-res photo is real CPU work.
+      final bytes = await compute(downscaleJpeg, rawBytes);
       if (!mounted) return;
       Navigator.of(
         context,

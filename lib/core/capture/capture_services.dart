@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 
@@ -78,6 +79,28 @@ class CaptureFailure implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// Downscales a captured JPEG so its longest edge is at most 1600px —
+/// `_take`'s `maxWidth: 1600` below, for the one capture path that can't go
+/// through `image_picker` to get it for free: `camera_capture_screen.dart`
+/// owns the live preview itself (for the torch button and bubble level,
+/// which `image_picker`'s OS-camera-app handoff can't support), so it reads
+/// raw bytes straight off `CameraController.takePicture()` with no resize
+/// step of its own. Top-level with no optional params so it can be handed
+/// directly to `compute()` — decoding and re-encoding a full-res photo is
+/// real CPU work, and doing it on the main isolate would jank the
+/// capture-confirm UI.
+Uint8List downscaleJpeg(Uint8List bytes) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) return bytes;
+  const maxEdge = 1600;
+  final longestEdge = decoded.width > decoded.height ? decoded.width : decoded.height;
+  if (longestEdge <= maxEdge) return bytes;
+  final resized = decoded.width >= decoded.height
+      ? img.copyResize(decoded, width: maxEdge)
+      : img.copyResize(decoded, height: maxEdge);
+  return Uint8List.fromList(img.encodeJpg(resized, quality: 80));
 }
 
 class PhotoCapture {

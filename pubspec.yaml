@@ -66,6 +66,14 @@ dependencies:
   camera: ^0.12.1
   sensors_plus: ^7.1.0
   sqflite_sqlcipher: ^3.4.1
+
+  # FR-3.4 — downscaling a photo the in-app camera captured itself
+  # (camera_capture_screen.dart). image_picker's maxWidth/imageQuality does
+  # this for every OTHER capture path in the app, but that plugin launches
+  # the OS camera and hands back a finished file — it never runs for a shot
+  # taken through camera's own CameraController, which is why this needed
+  # its own resize step.
+  image: ^4.5.4
 dev_dependencies:
   flutter_test:
     sdk: flutter

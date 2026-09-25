@@ -17,7 +17,10 @@ import '../features/notifications/notifications_screen.dart';
 import '../features/order_detail/order_detail_screen.dart';
 import '../features/orders/orders_screen.dart';
 import '../features/overview/overview_screen.dart';
+import '../core/c2o/route_pack.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/routes/route_detail_screen.dart';
+import '../features/routes/route_list_screen.dart';
 import '../features/scanner/scanner_screen.dart';
 import '../features/shell/technician_shell.dart';
 import '../features/sync/sync_center_screen.dart';
@@ -38,7 +41,18 @@ abstract final class Routes {
   static const scan = '/scan';
   static const nameplateOcr = '/nameplate-ocr';
   static const c2oSearch = '/c2o-search';
+  static const c2oRoutes = '/c2o-routes';
   static const syncCenter = '/sync';
+
+  /// FR-5.2/5.3 — the room-grouped list + progress for one downloaded route.
+  static String routeDetail(RouteScope scope, String id) => '/c2o-routes/${scope.name}/$id';
+
+  /// FR-5.4 — the scanner with an off-route check active: a resolved asset
+  /// outside [assetIds] is marked off-route rather than treated as a plain
+  /// resolve. Query params, not `extra` — this app never passes objects
+  /// through the router, only serialisable strings.
+  static String scanForRoute(RouteScope scope, String id) =>
+      Uri(path: scan, queryParameters: {'routeScope': scope.name, 'routeId': id}).toString();
   static const inspections = '/inspections';
 
   static String orderDetail(String type, String id) => '/orders/$type/$id';
@@ -211,7 +225,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.scan,
         parentNavigatorKey: _rootKey,
-        builder: (context, state) => const ScannerScreen(),
+        builder: (context, state) {
+          final routeScopeName = state.uri.queryParameters['routeScope'];
+          final routeId = state.uri.queryParameters['routeId'];
+          final routeScope = routeScopeName == null
+              ? null
+              : RouteScope.values.asNameMap()[routeScopeName];
+          return ScannerScreen(
+            activeRouteScope: routeScope,
+            activeRouteId: routeId,
+          );
+        },
       ),
       GoRoute(
         path: Routes.nameplateOcr,
@@ -222,6 +246,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.c2oSearch,
         parentNavigatorKey: _rootKey,
         builder: (context, state) => const C2oAssetSearchScreen(),
+      ),
+      GoRoute(
+        path: Routes.c2oRoutes,
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const RouteListScreen(),
+      ),
+      GoRoute(
+        path: '/c2o-routes/:scope/:id',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) {
+          final scope = RouteScope.values.asNameMap()[state.pathParameters['scope']] ??
+              RouteScope.package;
+          return RouteDetailScreen(scope: scope, id: state.pathParameters['id'] ?? '');
+        },
       ),
       GoRoute(
         path: Routes.syncCenter,

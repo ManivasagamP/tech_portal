@@ -14,6 +14,7 @@ import 'package:vibration/vibration.dart';
 import '../../app/env.dart';
 import '../../app/router.dart';
 import '../../core/c2o/c2o_asset_resolver.dart';
+import '../../core/c2o/route_pack.dart';
 import '../../core/utils/qr_payload.dart';
 import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
@@ -34,7 +35,15 @@ import '../../widgets/fe_header.dart';
 /// the technician just keeps sweeping — that is the actual speed win over
 /// the web page's one-scan-per-page-load flow.
 class ScannerScreen extends ConsumerStatefulWidget {
-  const ScannerScreen({super.key});
+  const ScannerScreen({super.key, this.activeRouteScope, this.activeRouteId});
+
+  /// FR-5.4 — when set (reached via [Routes.scanForRoute]), a resolved c2o
+  /// asset outside this route's downloaded asset ids is marked off-route
+  /// instead of a plain resolve. Null for the ordinary entry points (the
+  /// dashboard's Scan QR card, the scanner's own header icon) — off-route
+  /// only means something once there is a specific route being walked.
+  final RouteScope? activeRouteScope;
+  final String? activeRouteId;
 
   @override
   ConsumerState<ScannerScreen> createState() => _ScannerScreenState();
@@ -68,16 +77,41 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   /// The most recent c2o outcome, shown briefly and cleared automatically —
   /// continuous mode means no tap is required to keep scanning.
   C2oResolution? _c2oFlash;
+
+  /// FR-5.4 — whether [_c2oFlash] resolved outside the active route.
+  var _c2oFlashOffRoute = false;
   Timer? _c2oFlashTimer;
 
   var _paused = false;
   var _processing = false;
+
+  /// FR-5.4 — this route's downloaded asset ids, once loaded. Null while
+  /// loading or when [ScannerScreen.activeRouteScope] is null — in either
+  /// case off-route detection is simply off, never a false positive.
+  Set<String>? _activeRouteAssetIds;
 
   /// The last value read, held for four seconds. A QR code sitting in frame
   /// re-decodes many times a second; without this the same sticker would fire
   /// the handler over and over.
   String? _lastScanned;
   Timer? _cooldown;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveRoute();
+  }
+
+  Future<void> _loadActiveRoute() async {
+    final scope = widget.activeRouteScope;
+    final id = widget.activeRouteId;
+    if (scope == null || id == null) return;
+    final routes = await ref.read(offlineDbProvider).listRoutePacks();
+    final route = routes.where((r) => r.scope == scope && r.id == id).firstOrNull;
+    if (mounted && route != null) {
+      setState(() => _activeRouteAssetIds = route.assetIds.toSet());
+    }
+  }
 
   @override
   void dispose() {
@@ -107,12 +141,22 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     if (c2oResult != null) {
       await _buzz();
       if (!mounted) return;
+      // FR-5.4 — still verifies normally; this only changes how it's shown.
+      // A route with nothing loaded yet ([_activeRouteAssetIds] null) never
+      // flags anything, so a plain scan (no active route) is unaffected.
+      final offRoute = _activeRouteAssetIds != null &&
+          c2oResult is C2oResolved &&
+          !_activeRouteAssetIds!.contains(c2oResult.assetId);
       // Continuous mode (FR-1.2): join the session log and flash the
       // outcome, but never block — the camera keeps looking immediately.
       _c2oFlashTimer?.cancel();
       setState(() {
-        _c2oHistory.insert(0, _C2oScanEntry(outcome: c2oResult, at: DateTime.now()));
+        _c2oHistory.insert(
+          0,
+          _C2oScanEntry(outcome: c2oResult, at: DateTime.now(), offRoute: offRoute),
+        );
         _c2oFlash = c2oResult;
+        _c2oFlashOffRoute = offRoute;
         _resultRaw = raw;
         _processing = false;
       });
@@ -253,21 +297,25 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
               child: Icon(LucideIcons.qrCode, size: 18, color: FeColors.primary),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AppText.titleSmall(
-                  'scanner.title'.getString(context),
-                  weight: FontWeight.w700,
-                ),
-                AppText.caption(
-                  _paused
-                      ? 'scanner.paused'.getString(context)
-                      : 'scanner.looking_for_code'.getString(context),
-                  color: FeColors.ink2,
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AppText.titleSmall(
+                    'scanner.title'.getString(context),
+                    weight: FontWeight.w700,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  AppText.caption(
+                    _paused
+                        ? 'scanner.paused'.getString(context)
+                        : 'scanner.looking_for_code'.getString(context),
+                    color: FeColors.ink2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -301,6 +349,14 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
             tooltip: 'scanner.search'.getString(context),
             icon: const Icon(LucideIcons.search, size: 18, color: FeColors.ink),
             onPressed: () => context.push(Routes.c2oSearch),
+          ),
+          // FR-5.1 — download a route pack for offline use before walking
+          // in; same screen as the scan/search entry points since all three
+          // answer "what's my worklist" before signal is lost.
+          IconButton(
+            tooltip: 'scanner.routes'.getString(context),
+            icon: const Icon(LucideIcons.mapPin, size: 18, color: FeColors.ink),
+            onPressed: () => context.push(Routes.c2oRoutes),
           ),
         ],
       ),
@@ -345,7 +401,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                               detail: result.path,
                             ),
                           if (flash != null)
-                            _C2oOutcomeOverlay(outcome: flash),
+                            _C2oOutcomeOverlay(outcome: flash, offRoute: _c2oFlashOffRoute),
                         ],
                       ),
                     ),
@@ -689,13 +745,27 @@ _C2oVisual _c2oVisual(BuildContext context, C2oResolution outcome) => switch (ou
 };
 
 class _C2oOutcomeOverlay extends StatelessWidget {
-  const _C2oOutcomeOverlay({required this.outcome});
+  const _C2oOutcomeOverlay({required this.outcome, this.offRoute = false});
 
   final C2oResolution outcome;
 
+  /// FR-5.4 — resolved, but not part of the route being walked. Still a
+  /// real verify (the asset name/detail below is unchanged); only the
+  /// colour and the subtitle change, so it reads as "noted" rather than
+  /// "wrong".
+  final bool offRoute;
+
   @override
   Widget build(BuildContext context) {
-    final visual = _c2oVisual(context, outcome);
+    var visual = _c2oVisual(context, outcome);
+    if (offRoute && outcome is C2oResolved) {
+      visual = _C2oVisual(
+        FeColors.warning,
+        LucideIcons.mapPinOff,
+        visual.title,
+        'scanner.c2o_off_route_detail'.getString(context),
+      );
+    }
 
     return Container(
       color: visual.color.withValues(alpha: 0.9),
@@ -738,10 +808,13 @@ class _C2oOutcomeOverlay extends StatelessWidget {
 /// One c2o tag scanned this session (FR-1.2) — the running log a continuous
 /// walk builds up instead of a per-tag confirm screen.
 class _C2oScanEntry {
-  const _C2oScanEntry({required this.outcome, required this.at});
+  const _C2oScanEntry({required this.outcome, required this.at, this.offRoute = false});
 
   final C2oResolution outcome;
   final DateTime at;
+
+  /// FR-5.4 — resolved, but not part of the route being walked.
+  final bool offRoute;
 }
 
 /// Compact, always-visible tally of the session so far — a dot per scan,
@@ -762,6 +835,7 @@ class _C2oSessionStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final resolved = history.where((e) => e.outcome is C2oResolved).length;
     final flagged = history.length - resolved;
+    final offRoute = history.where((e) => e.offRoute).length;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -795,6 +869,27 @@ class _C2oSessionStrip extends StatelessWidget {
                 context.formatString(
                   'scanner.c2o_session_flagged'.getString(context),
                   [flagged.toString()],
+                ),
+                style: const TextStyle(
+                  color: FeColors.warning,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+          if (offRoute > 0) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: FeColors.warning.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: AppText(
+                context.formatString(
+                  'scanner.c2o_session_off_route'.getString(context),
+                  [offRoute.toString()],
                 ),
                 style: const TextStyle(
                   color: FeColors.warning,

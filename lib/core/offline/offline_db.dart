@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 // the only file in the app that needs to know the store is encrypted.
 import 'package:sqflite_sqlcipher/sqflite.dart';
 
+import '../c2o/route_pack.dart' show RouteScope;
+
 /// One queued upload inside a [PendingMutation] — a photo, a voice note, a
 /// face capture. Uploaded independently on flush and its own [placeholder]
 /// in the mutation body substituted with the resulting URL; [uploadedUrl] is
@@ -351,7 +353,77 @@ abstract interface class VerificationDraftStore {
   Future<void> deleteDraft(String assetId);
 }
 
-class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
+/// FR-5.1/SR-2 — a downloaded route's identity and freshness stamp. Its
+/// assets are NOT duplicated here: each one is upserted into the shared
+/// `c2o_assets` cache (same table FR-1.1's single-scan resolve already
+/// writes to), and [assetIds] is just the list needed to pull this route's
+/// own assets back out of that shared table for a progress/list view.
+class DownloadedRoutePack {
+  const DownloadedRoutePack({
+    required this.scope,
+    required this.id,
+    required this.asOf,
+    required this.versionTag,
+    required this.assetIds,
+    required this.downloadedAt,
+    this.packageId,
+    this.projectId,
+  });
+
+  final RouteScope scope;
+  final String id;
+
+  /// SR-2's pack timestamp — FR-5.7's "stamp the pack, show its age" starts
+  /// here, not [downloadedAt] (a slow download could finish well after the
+  /// server assembled the data).
+  final DateTime asOf;
+  final String versionTag;
+  final List<String> assetIds;
+  final DateTime downloadedAt;
+
+  /// The anchor this route was downloaded with — needed again for a
+  /// conditional-refresh call against a non-package scope (SR-1's building/
+  /// level/system scopes require the same anchor on every request).
+  final String? packageId;
+  final String? projectId;
+
+  int get assetCount => assetIds.length;
+
+  /// FR-5.7 — how stale this download is. The actual "too old to verify
+  /// against" THRESHOLD is a product/UI decision, not baked in here.
+  Duration get age => DateTime.now().difference(asOf);
+
+  factory DownloadedRoutePack.fromRow(Map<String, Object?> row) => DownloadedRoutePack(
+    scope: RouteScope.values.byName(row['scope'] as String),
+    id: row['scope_id'] as String,
+    asOf: DateTime.fromMillisecondsSinceEpoch(row['as_of'] as int),
+    versionTag: row['version_tag'] as String,
+    assetIds: List<String>.from(jsonDecode(row['asset_ids'] as String) as List),
+    downloadedAt: DateTime.fromMillisecondsSinceEpoch(row['downloaded_at'] as int),
+    packageId: row['package_id'] as String?,
+    projectId: row['project_id'] as String?,
+  );
+
+  Map<String, Object?> toRow() => {
+    'scope': scope.name,
+    'scope_id': id,
+    'as_of': asOf.millisecondsSinceEpoch,
+    'version_tag': versionTag,
+    'asset_ids': jsonEncode(assetIds),
+    'downloaded_at': downloadedAt.millisecondsSinceEpoch,
+    'package_id': packageId,
+    'project_id': projectId,
+  };
+}
+
+abstract interface class RoutePackStore {
+  Future<void> saveRoutePack(DownloadedRoutePack pack);
+  Future<List<DownloadedRoutePack>> listRoutePacks();
+  Future<void> deleteRoutePack(RouteScope scope, String id);
+}
+
+class OfflineDb
+    implements C2oAssetCache, TagIssueLog, VerificationDraftStore, RoutePackStore {
   OfflineDb._(this._db);
 
   static const _fileName = 'fusion_eco_offline.db';
@@ -364,7 +436,7 @@ class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
     final db = await openDatabase(
       p.join(dir, _fileName),
       password: passphrase,
-      version: 7,
+      version: 8,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE pending_mutations (
@@ -416,6 +488,7 @@ class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
         );
         await db.execute(_createTagIssueReportsSql);
         await db.execute(_createDraftsSql);
+        await db.execute(_createRoutePacksSql);
       },
       // v1 → v2: which order a queued write belongs to, for the Sync Center
       // list. Existing rows just come back with both columns null — they
@@ -426,6 +499,7 @@ class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
       // v5 → v6: multi-attachment queue rows, one upload per photo (FR-4.7).
       // v6 → v7: index the Sync Center's per-entity grouping (FR-4.9 — also
       // the first migration exercised live against a populated queue).
+      // v7 → v8: downloaded route packs (FR-5.1/SR-1).
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
@@ -456,6 +530,9 @@ class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
           await db.execute(
             'CREATE INDEX idx_pending_entity ON pending_mutations (entity_type, entity_id)',
           );
+        }
+        if (oldVersion < 8) {
+          await db.execute(_createRoutePacksSql);
         }
       },
     );
@@ -490,6 +567,20 @@ class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
       asset_id TEXT PRIMARY KEY,
       payload TEXT NOT NULL,
       updated_at INTEGER NOT NULL
+    )
+  ''';
+
+  static const _createRoutePacksSql = '''
+    CREATE TABLE route_packs (
+      scope TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      as_of INTEGER NOT NULL,
+      version_tag TEXT NOT NULL,
+      asset_ids TEXT NOT NULL,
+      downloaded_at INTEGER NOT NULL,
+      package_id TEXT,
+      project_id TEXT,
+      PRIMARY KEY (scope, scope_id)
     )
   ''';
 
@@ -679,6 +770,26 @@ class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
     whereArgs: [assetId],
   );
 
+  @override
+  Future<void> saveRoutePack(DownloadedRoutePack pack) => _db.insert(
+    'route_packs',
+    pack.toRow(),
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+
+  @override
+  Future<List<DownloadedRoutePack>> listRoutePacks() async {
+    final rows = await _db.query('route_packs', orderBy: 'downloaded_at DESC');
+    return rows.map(DownloadedRoutePack.fromRow).toList();
+  }
+
+  @override
+  Future<void> deleteRoutePack(RouteScope scope, String id) => _db.delete(
+    'route_packs',
+    where: 'scope = ? AND scope_id = ?',
+    whereArgs: [scope.name, id],
+  );
+
   Future<void> wipe() async {
     await _db.delete('pending_mutations');
     await _db.delete('cached_entities');
@@ -687,5 +798,6 @@ class OfflineDb implements C2oAssetCache, TagIssueLog, VerificationDraftStore {
     await _db.delete('c2o_assets');
     await _db.delete('tag_issue_reports');
     await _db.delete('verification_drafts');
+    await _db.delete('route_packs');
   }
 }

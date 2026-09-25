@@ -7,6 +7,7 @@ import '../core/offline/sync_client.dart';
 import '../core/storage/secure_store.dart';
 import '../core/storage/session_store.dart';
 import '../core/c2o/c2o_asset_resolver.dart';
+import '../core/c2o/route_download_service.dart';
 import '../core/floorplan/floor_plan_image_cache.dart';
 import '../data/asset_repository.dart';
 import '../data/asset_tag_issue_repository.dart';
@@ -15,6 +16,8 @@ import '../data/c2o_field_verification_repository.dart';
 import '../data/field_verification_repository.dart';
 import '../data/floor_plan_repository.dart';
 import '../data/notifications_repository.dart';
+import '../data/route_assignment_repository.dart';
+import '../data/route_pack_repository.dart';
 import '../data/technician_location_repository.dart';
 
 /// All four are constructed in main() and injected via ProviderScope overrides.
@@ -92,6 +95,20 @@ final c2oAssetResolverProvider = Provider<C2oAssetResolver>(
   ),
 );
 
+final routePackRepositoryProvider = Provider<RoutePackRepository>(
+  (ref) => RoutePackRepository(ref.watch(apiClientProvider)),
+);
+
+/// FR-5.1/SR-1 — downloads a route pack and writes it into the same c2o
+/// cache FR-1.1's single-scan resolve already uses.
+final routeDownloadServiceProvider = Provider<RouteDownloadService>(
+  (ref) => RouteDownloadService(
+    fetcher: ref.watch(routePackRepositoryProvider),
+    assetCache: ref.watch(offlineDbProvider),
+    routeStore: ref.watch(offlineDbProvider),
+  ),
+);
+
 /// Fires whenever the offline queue changes, so lists can correct themselves.
 final queueChangedProvider = StreamProvider<int>(
   (ref) => ref.watch(queueBusProvider).stream,
@@ -124,6 +141,31 @@ final syncConflictsProvider = FutureProvider<List<SyncConflict>>((ref) async {
   ref.watch(queueChangedProvider);
   return ref.watch(offlineDbProvider).listConflicts();
 });
+
+/// Bumped by the routes screen after a download/delete completes, so
+/// [downloadedRoutePacksProvider] re-reads — route packs aren't part of the
+/// offline mutation queue, so [queueChangedProvider]'s tick doesn't cover them.
+final routePacksTickProvider = StateProvider<int>((ref) => 0);
+
+final downloadedRoutePacksProvider = FutureProvider<List<DownloadedRoutePack>>((ref) async {
+  ref.watch(routePacksTickProvider);
+  return ref.watch(offlineDbProvider).listRoutePacks();
+});
+
+final routeAssignmentRepositoryProvider = Provider<RouteAssignmentRepository>(
+  (ref) => RouteAssignmentRepository(
+    ref.watch(syncClientProvider),
+    ref.watch(apiClientProvider),
+  ),
+);
+
+/// FR-5.5 — routes an admin assigned to this technician. Not tied to
+/// [routePacksTickProvider]: downloading doesn't change the assignment list,
+/// and the "Downloaded" state is derived by crossing it with
+/// [downloadedRoutePacksProvider] in the screen.
+final assignedRoutesProvider = FutureProvider<AssignedRoutesRead>(
+  (ref) => ref.watch(routeAssignmentRepositoryProvider).fetchMine(),
+);
 
 final notificationsRepositoryProvider = Provider<NotificationsRepository>(
   (ref) => NotificationsRepository(ref.watch(apiClientProvider)),
