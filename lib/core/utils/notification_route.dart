@@ -36,6 +36,9 @@ String? routeForNotification(AppNotification notification) {
   // `/orders/:type/:id`, so this one entity type is handled before the
   // four-way order lookup below.
   if (entityType == 'Inspection') return Routes.inspectionDetail(entityId);
+  // Snag Assistant — the server also sends `/technician/snags/<id>` as the
+  // link, which the branch above already maps; this covers a link-less one.
+  if (entityType == 'Snag') return Routes.snagDetail(entityId);
 
   final slug = _slugForEntityType(entityType);
   return slug == null ? null : Routes.orderDetail(slug, entityId);

@@ -185,6 +185,11 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _ViewFloorPlanButton(detail: detail),
                         ),
+                      // UC-5 — raise a snag against this asset (Snag Assistant).
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _RaiseSnagButton(detail: detail),
+                      ),
                       Center(
                         child: TextButton.icon(
                           onPressed: () => context.push(
@@ -314,6 +319,43 @@ class _ViewFloorPlanButton extends StatelessWidget {
         label: AppText.label(
           'assetDetail.view_floor_plan'.getString(context),
           color: FeColors.primary,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+/// UC-5 (docs/snag-assistant.md) — opens the raise form with this asset,
+/// and its floor when the register has one, already filled in.
+class _RaiseSnagButton extends StatelessWidget {
+  const _RaiseSnagButton({required this.detail});
+
+  final AssetDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => context.push(
+          Routes.snagNew(
+            assetId: detail.id,
+            assetName: detail.assetName ?? detail.assetReferenceId,
+            assetReferenceId: detail.assetReferenceId,
+            floorId: detail.floorId,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: FeColors.danger,
+          side: const BorderSide(color: FeColors.danger, width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        icon: const Icon(LucideIcons.flag, size: 16),
+        label: AppText.label(
+          'snags.raise_snag'.getString(context),
+          color: FeColors.danger,
           weight: FontWeight.w700,
         ),
       ),

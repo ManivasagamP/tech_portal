@@ -390,6 +390,27 @@ class _DetailsTab extends ConsumerWidget {
                           },
                         ),
                       ),
+                    // UC-5 — a defect found during this job that is not part of
+                    // it becomes its own snag, linked back here, instead of
+                    // quietly widening this order's scope. Only a work order's
+                    // id is passed as the link: the snag's `workOrderId` points
+                    // at `work_orders`, not at PM/RM records.
+                    if (ref.watch(authControllerProvider).permissions.isDigitalTwin != false)
+                      const SizedBox(width: 12),
+                    Expanded(
+                      child: _ActionPillButton(
+                        icon: LucideIcons.flag,
+                        label: 'snags.raise_snag'.getString(context),
+                        onTap: () => context.push(
+                          Routes.snagNew(
+                            assetId: record.assetId,
+                            assetName: record.assetName,
+                            workOrderId: record.type == OrderType.workOrder ? record.id : null,
+                            context: 'operations',
+                          ),
+                        ),
+                      ),
+                    ),
                     // Record voice note — hidden for now.
                     // const SizedBox(width: 12),
                     // Expanded(

@@ -90,6 +90,7 @@ sequenceDiagram
 - **Attachments** (photos, voice, face captures) are stored as bytes in the row. The mutation body holds a **placeholder token** that is replaced by the uploaded URL on flush (`_substitute` JSON-encodes the body, then `replaceAll`s). Each attachment's `uploadedUrl` is persisted as soon as it lands (FR-4.7), so a retry never uploads it twice.
 - **`entityType`/`entityId`** are stamped by the repository at enqueue time. They are used only to group and label the Sync Center, because URLs aren't reliably reversible. They are never sent.
 - `label` is the human line shown in Sync Center and the conflict log.
+- **`queueOnServerError: true`** (opt-in, added for the Snag Assistant) also parks the write when the server answers **5xx right now**, instead of throwing. Only `NetworkFailure` queues by default. A snag walk has to survive a server that answers `503 SNAG_ENGINE_NOT_ENABLED` until its migration runs. The queued 5xx then replays under the normal flush policy.
 
 ### Flush: `flushQueue`
 
@@ -115,7 +116,7 @@ A 2xx whose body carries `captureConflict` (FR-4.8) is recorded as a **non-dropp
 
 ### Local database
 
-[OfflineDb.open](../lib/core/offline/offline_db.dart#L451) opens `fusion_eco_offline.db` (SQLCipher) at **schema version 8**:
+[OfflineDb.open](../lib/core/offline/offline_db.dart#L451) opens `fusion_eco_offline.db` (SQLCipher) at **schema version 9**:
 
 | Table | Holds |
 |---|---|
@@ -127,6 +128,8 @@ A 2xx whose body carries `captureConflict` (FR-4.8) is recorded as a **non-dropp
 | `tag_issue_reports` | local-only "tag missing/unreadable" reports (FR-1.7, no server field yet, SR-6) |
 | `verification_drafts` | autosaved capture forms (FR-4.2) |
 | `route_packs` | downloaded route packs (FR-5.1, SR-2 stamp) |
+| `snags` | Snag Assistant local store: the whole snag as JSON, plus `building_id`, `survey_id`, `status`, `local_only`. Written **before** any network call ([docs/snag-assistant.md §6](snag-assistant.md#6-app-architecture)) |
+| `snag_surveys` | Snag walks and surveys, including room sweeps (coverage) |
 
 **Schema change rule:** bump `version`, add the DDL to `onCreate`, **and** add an `if (oldVersion < N)` step to `onUpgrade` (each step is commented with its FR). `PendingMutation.fromRow` still reads the pre-v6 single-attachment columns, so a queue captured on an old build survives the update. Keep that kind of back-compat for queued rows.
 

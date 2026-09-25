@@ -14,6 +14,7 @@ import '../../state/locale_controller.dart';
 import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
 import '../../widgets/app_text.dart';
+import '../snags/widgets/snag_dashboard_card.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/order_card.dart';
@@ -128,6 +129,10 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              // Snag Assistant (docs/snag-assistant.md) — its own widget so
+              // this screen only knows where the door is, not what's behind it.
+              const SnagDashboardCard(),
               const SizedBox(height: 22),
 
               // Section Title: "Today's Active Tasks"

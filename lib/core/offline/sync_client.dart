@@ -172,6 +172,13 @@ class SyncClient {
     }
   }
 
+  /// [queueOnServerError] also parks the write when the server answers 5xx
+  /// right now, instead of throwing. Opt-in, for writes whose evidence must
+  /// not be lost to a server-side outage: the Snag Assistant uses it because
+  /// the server answers `503 SNAG_ENGINE_NOT_ENABLED` until its one manual
+  /// migration has run (docs/snag-assistant.md §7.3), and a surveyor's walk
+  /// has to survive that. A queued 5xx replays under the normal flush policy
+  /// (retry, then the conflict log after [Env.maxMutationAttempts]).
   Future<SyncedWrite> syncRequest(
     String method,
     String url, {
@@ -181,6 +188,7 @@ class SyncClient {
     List<QueuedAttachment> attachments = const [],
     String? entityType,
     String? entityId,
+    bool queueOnServerError = false,
   }) async {
     final mutationId = _api.newMutationId();
     final allAttachments = [...attachments, ?attachment];
@@ -217,6 +225,19 @@ class SyncClient {
       );
       await _recordCaptureConflict(response.data, label: label, url: url);
       return SyncedWrite(synced: true, data: response.data);
+    } on HttpFailure catch (e) {
+      if (!queueOnServerError || e.status < 500) rethrow;
+      await _enqueue(
+        mutationId,
+        method,
+        url,
+        data,
+        label,
+        allAttachments,
+        entityType,
+        entityId,
+      );
+      return const SyncedWrite(synced: false);
     } on NetworkFailure {
       await _enqueue(
         mutationId,

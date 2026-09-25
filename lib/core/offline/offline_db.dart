@@ -435,12 +435,60 @@ abstract interface class RoutePackStore {
   Future<void> deleteRoutePack(RouteScope scope, String id);
 }
 
+/// Snag Assistant's local store (docs/snag-assistant.md §6). A snag is
+/// written here *first*, so the UI never waits on the network; the server
+/// write is queued separately through [SyncClient]. The row holds the whole
+/// snag as JSON — the columns beside it exist only to filter without
+/// decoding every row.
+class StoredSnagRow {
+  const StoredSnagRow({required this.id, required this.json, required this.localOnly});
+  final String id;
+  final Map<String, dynamic> json;
+  final bool localOnly;
+}
+
+abstract interface class SnagStore {
+  Future<void> upsertSnag({
+    required String id,
+    required Map<String, dynamic> json,
+    String? buildingId,
+    String? surveyId,
+    required String status,
+    required bool localOnly,
+    required DateTime updatedAt,
+  });
+  Future<StoredSnagRow?> getSnag(String id);
+
+  /// All snags, or one building's when [buildingId] is set.
+  Future<List<StoredSnagRow>> listSnags({String? buildingId});
+
+  /// Removes server-known rows for [buildingId] that are not in [keepIds] —
+  /// a snag deleted or moved on the server. Never touches local-only rows.
+  Future<void> pruneSnags({required String buildingId, required Set<String> keepIds});
+
+  Future<void> upsertSurvey({
+    required String id,
+    required Map<String, dynamic> json,
+    String? buildingId,
+    required bool localOnly,
+    required DateTime updatedAt,
+  });
+  Future<Map<String, dynamic>?> getSurvey(String id);
+  Future<List<Map<String, dynamic>>> listSurveys({String? buildingId});
+
+  /// Entity ids with a write still waiting in the queue, for one entity type.
+  /// A snag in this set is *ahead* of the server, so a fetch must not
+  /// overwrite it.
+  Future<Set<String>> pendingEntityIds(String entityType);
+}
+
 class OfflineDb
     implements
         C2oAssetCache,
         TagIssueLog,
         VerificationDraftStore,
-        RoutePackStore {
+        RoutePackStore,
+        SnagStore {
   OfflineDb._(this._db);
 
   static const _fileName = 'fusion_eco_offline.db';
@@ -453,7 +501,7 @@ class OfflineDb
     final db = await openDatabase(
       p.join(dir, _fileName),
       password: passphrase,
-      version: 8,
+      version: 9,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE pending_mutations (
@@ -506,6 +554,7 @@ class OfflineDb
         await db.execute(_createTagIssueReportsSql);
         await db.execute(_createDraftsSql);
         await db.execute(_createRoutePacksSql);
+        await _createSnagTables(db);
       },
       // v1 → v2: which order a queued write belongs to, for the Sync Center
       // list. Existing rows just come back with both columns null — they
@@ -517,6 +566,7 @@ class OfflineDb
       // v6 → v7: index the Sync Center's per-entity grouping (FR-4.9 — also
       // the first migration exercised live against a populated queue).
       // v7 → v8: downloaded route packs (FR-5.1/SR-1).
+      // v8 → v9: Snag Assistant local store (snags, snag_surveys).
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
@@ -550,6 +600,9 @@ class OfflineDb
         }
         if (oldVersion < 8) {
           await db.execute(_createRoutePacksSql);
+        }
+        if (oldVersion < 9) {
+          await _createSnagTables(db);
         }
       },
     );
@@ -600,6 +653,30 @@ class OfflineDb
       PRIMARY KEY (scope, scope_id)
     )
   ''';
+
+  static Future<void> _createSnagTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE snags (
+        id TEXT PRIMARY KEY,
+        building_id TEXT,
+        survey_id TEXT,
+        status TEXT NOT NULL,
+        local_only INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        json TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_snags_building ON snags (building_id)');
+    await db.execute('''
+      CREATE TABLE snag_surveys (
+        id TEXT PRIMARY KEY,
+        building_id TEXT,
+        local_only INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        json TEXT NOT NULL
+      )
+    ''');
+  }
 
   Future<void> enqueue(PendingMutation mutation) async {
     await _db.insert(
@@ -859,6 +936,112 @@ class OfflineDb
     whereArgs: [scope.name, id],
   );
 
+  @override
+  Future<void> upsertSnag({
+    required String id,
+    required Map<String, dynamic> json,
+    String? buildingId,
+    String? surveyId,
+    required String status,
+    required bool localOnly,
+    required DateTime updatedAt,
+  }) => _db.insert('snags', {
+    'id': id,
+    'building_id': buildingId,
+    'survey_id': surveyId,
+    'status': status,
+    'local_only': localOnly ? 1 : 0,
+    'updated_at': updatedAt.millisecondsSinceEpoch,
+    'json': jsonEncode(json),
+  }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+  static StoredSnagRow _snagRow(Map<String, Object?> row) => StoredSnagRow(
+    id: row['id'] as String,
+    json: Map<String, dynamic>.from(jsonDecode(row['json'] as String) as Map),
+    localOnly: (row['local_only'] as int? ?? 0) == 1,
+  );
+
+  @override
+  Future<StoredSnagRow?> getSnag(String id) async {
+    final rows = await _db.query('snags', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : _snagRow(rows.first);
+  }
+
+  @override
+  Future<List<StoredSnagRow>> listSnags({String? buildingId}) async {
+    final rows = buildingId == null
+        ? await _db.query('snags', orderBy: 'updated_at DESC')
+        : await _db.query(
+            'snags',
+            where: 'building_id = ?',
+            whereArgs: [buildingId],
+            orderBy: 'updated_at DESC',
+          );
+    return rows.map(_snagRow).toList();
+  }
+
+  @override
+  Future<void> pruneSnags({required String buildingId, required Set<String> keepIds}) async {
+    final rows = await _db.query(
+      'snags',
+      columns: ['id'],
+      where: 'building_id = ? AND local_only = 0',
+      whereArgs: [buildingId],
+    );
+    final stale = rows.map((r) => r['id'] as String).where((id) => !keepIds.contains(id)).toList();
+    for (final id in stale) {
+      await _db.delete('snags', where: 'id = ?', whereArgs: [id]);
+    }
+  }
+
+  @override
+  Future<void> upsertSurvey({
+    required String id,
+    required Map<String, dynamic> json,
+    String? buildingId,
+    required bool localOnly,
+    required DateTime updatedAt,
+  }) => _db.insert('snag_surveys', {
+    'id': id,
+    'building_id': buildingId,
+    'local_only': localOnly ? 1 : 0,
+    'updated_at': updatedAt.millisecondsSinceEpoch,
+    'json': jsonEncode(json),
+  }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+  @override
+  Future<Map<String, dynamic>?> getSurvey(String id) async {
+    final rows = await _db.query('snag_surveys', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    return Map<String, dynamic>.from(jsonDecode(rows.first['json'] as String) as Map);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listSurveys({String? buildingId}) async {
+    final rows = buildingId == null
+        ? await _db.query('snag_surveys', orderBy: 'updated_at DESC')
+        : await _db.query(
+            'snag_surveys',
+            where: 'building_id = ?',
+            whereArgs: [buildingId],
+            orderBy: 'updated_at DESC',
+          );
+    return rows
+        .map((r) => Map<String, dynamic>.from(jsonDecode(r['json'] as String) as Map))
+        .toList();
+  }
+
+  @override
+  Future<Set<String>> pendingEntityIds(String entityType) async {
+    final rows = await _db.query(
+      'pending_mutations',
+      columns: ['entity_id'],
+      where: 'entity_type = ? AND entity_id IS NOT NULL',
+      whereArgs: [entityType],
+    );
+    return rows.map((r) => r['entity_id'] as String).toSet();
+  }
+
   Future<void> wipe() async {
     await _db.delete('pending_mutations');
     await _db.delete('cached_entities');
@@ -868,5 +1051,7 @@ class OfflineDb
     await _db.delete('tag_issue_reports');
     await _db.delete('verification_drafts');
     await _db.delete('route_packs');
+    await _db.delete('snags');
+    await _db.delete('snag_surveys');
   }
 }

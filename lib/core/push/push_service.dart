@@ -119,6 +119,7 @@ String? _routeForPushData({
   if (entityType == 'conversation') return null;
   if (title == 'New assignment invite') return Routes.invites;
   if (entityType == 'Inspection') return Routes.inspectionDetail(entityId);
+  if (entityType == 'Snag') return Routes.snagDetail(entityId);
 
   final slug = switch (entityType) {
     'WorkOrder' => 'work-order',

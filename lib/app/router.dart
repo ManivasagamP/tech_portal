@@ -23,6 +23,12 @@ import '../features/routes/route_detail_screen.dart';
 import '../features/routes/route_list_screen.dart';
 import '../features/scanner/scanner_screen.dart';
 import '../features/shell/technician_shell.dart';
+import '../features/snags/snag_detail_screen.dart';
+import '../features/snags/snag_hub_screen.dart';
+import '../features/snags/snag_raise_screen.dart';
+import '../features/snags/snag_survey_screen.dart';
+import '../features/snags/snag_verify_screen.dart';
+import '../features/snags/snag_walk_screen.dart';
 import '../features/sync/sync_center_screen.dart';
 import '../features/twin/twin_screen.dart';
 import '../features/web/web_page_screen.dart';
@@ -59,6 +65,38 @@ abstract final class Routes {
   static String inspectionDetail(String id) => '/inspections/$id';
   static String twin(String assetId) => '/twin/$assetId';
   static String assetDetail(String assetId) => '/asset/$assetId';
+
+  // Snag Assistant (docs/snag-assistant.md). The server's notification link
+  // `/technician/snags/<id>` maps onto [snagDetail] like every other link.
+  static const snags = '/snags';
+  static String snagDetail(String id) => '/snags/$id';
+  static String snagWalk(String surveyId) => '/snags/walk/$surveyId';
+  static String snagSurvey(String surveyId) => '/snags/survey/$surveyId';
+  static String snagVerify(String buildingId) =>
+      Uri(path: '/snags/verify', queryParameters: {'buildingId': buildingId}).toString();
+
+  /// UC-5 — a snag raised from context (an asset, a work order) arrives
+  /// with that context pre-filled. Only strings cross the router.
+  static String snagNew({
+    String? buildingId,
+    String? floorId,
+    String? assetId,
+    String? assetName,
+    String? assetReferenceId,
+    String? workOrderId,
+    String? context,
+  }) {
+    final query = {
+      'buildingId': ?buildingId,
+      'floorId': ?floorId,
+      'assetId': ?assetId,
+      'assetName': ?assetName,
+      'assetRef': ?assetReferenceId,
+      'workOrderId': ?workOrderId,
+      'context': ?context,
+    };
+    return Uri(path: '/snags/new', queryParameters: query.isEmpty ? null : query).toString();
+  }
 
   /// FR-2.8. [assetId] is a query param (not the path) so the floor plan
   /// image can stay cached under one key per floor regardless of which
@@ -299,6 +337,48 @@ final routerProvider = Provider<GoRouter>((ref) {
           claimedTag: state.uri.queryParameters['claimedTag'],
           floorId: state.uri.queryParameters['floorId'],
         ),
+      ),
+      // Snag Assistant — the fixed segments must stay above `/snags/:id`.
+      GoRoute(
+        path: Routes.snags,
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const SnagHubScreen(),
+      ),
+      GoRoute(
+        path: '/snags/walk/:surveyId',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => SnagWalkScreen(surveyId: state.pathParameters['surveyId'] ?? ''),
+      ),
+      GoRoute(
+        path: '/snags/survey/:surveyId',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => SnagSurveyScreen(surveyId: state.pathParameters['surveyId'] ?? ''),
+      ),
+      GoRoute(
+        path: '/snags/verify',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => SnagVerifyScreen(buildingId: state.uri.queryParameters['buildingId'] ?? ''),
+      ),
+      GoRoute(
+        path: '/snags/new',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) {
+          final q = state.uri.queryParameters;
+          return SnagRaiseScreen(
+            buildingId: q['buildingId'],
+            floorId: q['floorId'],
+            assetId: q['assetId'],
+            assetName: q['assetName'],
+            assetReferenceId: q['assetRef'],
+            workOrderId: q['workOrderId'],
+            contextWire: q['context'],
+          );
+        },
+      ),
+      GoRoute(
+        path: '/snags/:id',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => SnagDetailScreen(snagId: state.pathParameters['id'] ?? ''),
       ),
       GoRoute(
         path: '/floor-plan/:floorId',

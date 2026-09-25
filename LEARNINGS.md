@@ -54,6 +54,13 @@ Entries marked **Source:** were carried over on 2026-09-25 from `fusion-eco-serv
 
 ---
 
+### `syncRequest` only queues on `NetworkFailure`, so an online 5xx loses the write (2026-09-26)
+**What happened:** the Snag Assistant server answers `503 SNAG_ENGINE_NOT_ENABLED` until its migration has run. With plain `syncRequest`, that 503 is thrown to the screen while the device is online, and nothing is queued. A surveyor's walk would have been lost.
+**Fix:** an opt-in `queueOnServerError: true` on `syncRequest` parks any 5xx exactly like a network failure. Snag writes use it. A 4xx still throws: it is the server saying no, and replaying it cannot help. Separately, the local `snags` table is written *before* the request, and `SnagRepository.resendStranded()` re-queues a create that ran out of retries once `GET /api/snags/engine` says the server is ready.
+**What to watch:** any new write whose evidence must survive a server outage (not only no signal) should pass `queueOnServerError: true`. A queued 5xx still goes to the conflict log after `Env.maxMutationAttempts`, which is about 2 minutes at the 20s poll, so pair it with a local copy the user can re-send.
+**Where:** [sync_client.dart](lib/core/offline/sync_client.dart) `syncRequest`, [snag_repository.dart](lib/data/snag_repository.dart) `_send`, `resendStranded`
+
+
 ## Auth, session and location gate
 
 ### Location check-in: login flag plus a 428 gate on writes only; there is no silent push (2026-09-15)
@@ -200,6 +207,24 @@ Entries marked **Source:** were carried over on 2026-09-25 from `fusion-eco-serv
 
 ---
 
+### `TechCard` is a `DecoratedBox`, so a `ListTile` or `ExpansionTile` inside it asserts (2026-09-26)
+**What happened:** the snag survey and raise screens put `ListTile`s straight inside `TechCard`. A widget test failed with "ListTile background color or ink splashes may be invisible". On a device the ripple silently doesn't show.
+**Fix:** wrap the card's content in `Material(type: MaterialType.transparency)`.
+**What to watch:** any tile-style widget (ListTile, ExpansionTile, CheckboxListTile) inside `TechCard`. The sheets are fine because `showModalBottomSheet` provides a Material.
+**Where:** [snag_survey_screen.dart](lib/features/snags/snag_survey_screen.dart), [snag_raise_screen.dart](lib/features/snags/snag_raise_screen.dart)
+
+### Widget tests at 320–360 px in Arabic find overflows that English hides (2026-09-26)
+**What happened:** the Snag hub passed in English and overflowed by 13 px in Arabic. The cause was a section-title `Row` whose text had no `Flexible`. The test font draws every glyph as a full em square, so it is harsher than Montserrat, and that is useful: it stands in for large system font sizes. A fixed-height walk card and the waiting-card strip overflowed the same way.
+**Fix:** `Flexible` plus ellipsis on titles in rows, `minHeight` instead of `height` on cards holding text, and taller horizontal strips.
+**What to watch:** `tester.takeException()` gives only the one-line summary. To find the culprit, temporarily point `FlutterError.onError` at `print` in a scratch copy of the test. The details include "The relevant error-causing widget was: Row file:///…:586". Screen tests should scroll lazily built lists (`scrollUntilVisible(..., scrollable: find.byType(Scrollable).first)`), or rows below the fold are never built or checked.
+**Where:** [test/snag_screens_test.dart](test/snag_screens_test.dart), [snag_hub_screen.dart](lib/features/snags/snag_hub_screen.dart) `_SectionTitle`
+
+### Round-tripping the i18n JSON through a parser reformats other people's lines (2026-09-26)
+**What happened:** adding keys with `json.load` → `json.dump` removed the blank-line grouping in `en.json`/`ar.json` and produced a 72-line diff in strings nobody touched.
+**Fix:** append new keys to the file as text before the closing `}`, then re-parse only to validate.
+**What to watch:** check `git diff --stat assets/i18n/` after any scripted key addition. Only your own lines, plus one comma, should change.
+
+
 ## Platform, build and release
 
 ### The committed default API host is a developer's LAN IP (2026-09-21 → 2026-09-25, open)
@@ -218,6 +243,19 @@ Entries marked **Source:** were carried over on 2026-09-25 from `fusion-eco-serv
 **What happened:** `flutter pub get` fails the SDK constraint. **Cause:** the zsh `flutter` alias points to a path that doesn't exist (`~/.zshrc:131-132`), and `~/.zshrc:6` has a PATH entry missing its leading `/`. The newest SDK installed is 3.19.3, while `pubspec.lock` needs Flutter ≥ 3.44.0 / Dart ≥ 3.13.2. **What to watch:** any "analyze clean / tests pass" claim made from this Mac right now is unverified. Install Flutter 3.44+ first.
 
 ---
+
+### A working Flutter toolchain can be bootstrapped in the session scratchpad (2026-09-26)
+**What happened:** the Mac's installed SDKs are too old for `pubspec.lock`, and the disk is nearly full, so a full install isn't possible. The Snag Assistant still needed `flutter analyze` and `flutter test`.
+**Fix:** download `flutter_macos_arm64_3.47.5-stable.zip` (Dart 3.13.4) into the scratchpad, then `unzip -x` everything not needed: `.git`, `.pub-preload-cache`, `dev/`, `examples/`, `flutter_web_sdk`, and every engine artifact except `darwin-x64` and `common`. That leaves about 1.1 GB. Then:
+1. `git init -b stable` plus an empty commit, tagged `3.47.5`, with origin set to the GitHub URL. The tool refuses to run without a git checkout.
+2. `mkdir dev examples`. `flutter analyze` lists them.
+3. Export `FLUTTER_PREBUILT_ENGINE_VERSION=<bin/cache/engine-dart-sdk.stamp>`. Without it, the fake repo changes the computed engine hash and the tool moves `dart-sdk` aside to re-download it.
+4. Export `PUB_CACHE=<scratchpad>/pub-cache`, so nothing is written to `~`.
+
+`flutter pub get --enforce-lockfile` left `pubspec.lock` unchanged. `dart analyze` and `flutter test --no-pub` then work.
+**What to watch:** extract selectively. Keeping the zip and doing a full unzip together filled the disk. macOS has no `timeout` command; use the tool's own timeout, and never run two `flutter test` processes at once, because they fight over the startup lock and both appear hung. It is session-only: the scratchpad is wiped afterwards.
+**State:** results obtained this way count as real Flutter ≥ 3.44 runs for the CLAUDE.md verification rule.
+
 
 ## AR BIM overlay (planned, not built)
 
@@ -273,3 +311,23 @@ Full plan: [docs/ar-bim-overlay.md](docs/ar-bim-overlay.md). These are the findi
 ### iPad support rules out WebXR; AR is native, with Filament on both platforms (2026-09-25, decision)
 **What happened:** the user made iPhone and iPad first-class targets for a product with no licences. Researched in September 2026: Chrome on Android has full WebXR AR (hit-test, anchors, depth, DOM overlay, raw camera access since Chrome 107), but **Safari on iPhone and iPad has no `immersive-ar`** and no public timeline, and **Android WebView has no WebXR** either, so a web page can't do AR inside FieldOps. RealityKit loads **only USDZ, not glTF** (GLTFKit2, MIT, converts), so it would need a second material and a second tile path. **Decision:** ARCore and ARKit for tracking, **Filament for rendering on both** (Android through SceneView, which is actively released; Sceneform was archived in March 2026; iOS follows Google's official `ios/samples/hello-ar`). RealityKit + GLTFKit2 is the iOS fallback if AR-37 fails. **What to watch:** FieldOps doesn't launch on iOS yet (Track I). LiDAR iPads get the best hit-tests on plain walls.
 **Where:** [docs/ar-bim-overlay.md §0, §2.4, §11](docs/ar-bim-overlay.md)
+
+## Snag Assistant
+
+Design: [docs/snag-assistant.md](docs/snag-assistant.md). Server: `../fusion-eco-server/documentation/snag-assistant.md`.
+
+### Duplicate guard: "same floor" must not link two different rooms (2026-09-26)
+**What happened:** the first `SnagDuplicateFinder` gave +0.1 for the same floor whenever the rooms differed. Two identical-sounding snags in rooms 101 and 109 ("cracked socket faceplate") then scored 0.75 and were offered as duplicates. A unit test caught it.
+**Fix:** when both sides have a room and the rooms differ, only the same asset (a riser, a duct run) can link them. The same-floor bonus applies only when one side was raised at floor level.
+**What to watch:** a false positive costs one "Different" tap, but a noisy guard gets ignored and then it stops catching the real duplicates. Room plus trade alone (0.55) is deliberately below the 0.6 bar, because two electrical snags in one room are usually two defects.
+**Where:** [snag_rules.dart](lib/core/snag/snag_rules.dart) `SnagDuplicateFinder.find`, [test/snag_rules_test.dart](test/snag_rules_test.dart)
+
+### Snags are local-first, and actions stay locked until the server knows the snag (2026-09-26)
+**What happened:** a transition on a snag the server has never seen would 404 if it replayed before its create (improvements.md's 5xx-reordering P1), which drops it to the conflict log.
+**Fix:** a `localOnly` snag shows no actions and cannot take a "+1". The create itself is idempotent on the client id. On a fetch, the server copy replaces the local one unless the snag still has a queued write; while it does, the device is ahead.
+**What to watch:** `pendingEntityIds('Snag')` is the "device is ahead" test. Keep `entityType: 'Snag'` on every snag `syncRequest`, or a fetch can overwrite an optimistic change that is still queued.
+**Where:** [snag_repository.dart](lib/data/snag_repository.dart) `refresh`, [snag_detail_screen.dart](lib/features/snags/snag_detail_screen.dart)
+
+### GAMMA's alignment UI: what to copy and what to fix (2026-09-26)
+**What happened:** screenshots from GAMMA's alignment video showed four details worth taking. (1) A method chooser, where Corner is "Recommended". (2) Structural gridlines drawn on the slab while aligning. (3) QR sheets with **four checkerboard corner targets**, which give far more precise corners than a QR code's own. (4) An "Unregistered QR code" prompt that appears when an unknown sheet is scanned. It also showed two things to fix: a flat 13-item menu, and a jargon prompt ("Do you want to edit QR codes?"). **Adopted:** a context-recommended chooser with "remember per floor"; `IfcGrid` gridlines as a guide and a snap target; corner targets on our boards; a grouped menu with a separate Layers panel; and plain-language, single-decision prompts. **What to watch:** keep one set of widgets with two layouts (iPad rails with labels, phone tabs plus a bottom sheet) rather than two apps.
+**Where:** [docs/ar-setup-and-gamma-parity.md §2.9](docs/ar-setup-and-gamma-parity.md)
