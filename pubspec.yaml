@@ -74,6 +74,7 @@ dependencies:
   # taken through camera's own CameraController, which is why this needed
   # its own resize step.
   image: ^4.5.4
+  workmanager: ^0.10.10
 dev_dependencies:
   flutter_test:
     sdk: flutter

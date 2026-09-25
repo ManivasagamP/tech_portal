@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/app.dart';
 import 'app/env.dart';
 import 'core/network/api_client.dart';
+import 'core/offline/background_sync.dart';
 import 'core/offline/offline_db.dart';
 import 'core/push/push_service.dart';
 import 'core/storage/secure_store.dart';
@@ -33,6 +34,11 @@ Future<void> main() async {
     secureStore: secureStore,
     baseUrl: sessionStore.readBaseUrlOverride() ?? Env.defaultApiBaseUrl,
   );
+
+  // FR-4.4 — schedule the OS-level queue drain that runs even while the app
+  // is closed. Not awaited past its own error handling: it must never block
+  // or break startup.
+  await BackgroundSync.init();
 
   runApp(
     ProviderScope(

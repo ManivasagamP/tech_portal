@@ -37,6 +37,13 @@ class SecureStore {
   /// the existing database file unreadable rather than silently corrupting
   /// it — `OfflineDb.open()` falling over in that case means "start a fresh
   /// queue," the same outcome as a plain uninstall already has today.
+  /// FR-4.4 — read-only twin of [getOrCreateDbPassphrase] for the background
+  /// sync engine, which must never create a passphrase of its own.
+  Future<String?> readDbPassphrase() async {
+    final existing = await _storage.read(key: _dbPassphraseKey);
+    return existing == null || existing.isEmpty ? null : existing;
+  }
+
   Future<String> getOrCreateDbPassphrase() async {
     final existing = await _storage.read(key: _dbPassphraseKey);
     if (existing != null && existing.isNotEmpty) return existing;

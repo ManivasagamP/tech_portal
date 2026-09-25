@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/network/api_client.dart';
+import '../core/offline/background_sync.dart';
 import '../core/offline/offline_db.dart';
 import '../core/offline/queue_bus.dart';
 import '../core/offline/sync_client.dart';
@@ -45,6 +46,9 @@ final syncClientProvider = Provider<SyncClient>((ref) {
     api: ref.watch(apiClientProvider),
     db: ref.watch(offlineDbProvider),
     bus: ref.watch(queueBusProvider),
+    // FR-4.4 — anything queued also gets an OS-level "drain when there's
+    // signal" job, so it uploads even if the app is killed first.
+    onEnqueued: BackgroundSync.requestSoon,
   );
   ref.onDispose(client.dispose);
   return client;

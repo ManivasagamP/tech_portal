@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import '../../app/env.dart';
 import '../network/api_client.dart';
 import '../network/api_exception.dart';
+import 'flush_policy.dart';
 import 'offline_db.dart';
 import 'queue_bus.dart';
 
@@ -75,15 +76,26 @@ class SyncClient {
     required OfflineDb db,
     required QueueBus bus,
     Connectivity? connectivity,
+    void Function()? onEnqueued,
   }) : _api = api,
        _db = db,
        _bus = bus,
-       _connectivity = connectivity ?? Connectivity();
+       _connectivity = connectivity ?? Connectivity(),
+       _onEnqueued = onEnqueued,
+       _leaseOwner = api.newMutationId();
 
   final ApiClient _api;
   final OfflineDb _db;
   final QueueBus _bus;
   final Connectivity _connectivity;
+
+  /// FR-4.4 — told whenever a write lands in the queue, so the OS can be
+  /// asked to drain it as soon as there's signal, even if the app is killed
+  /// before then (see `background_sync.dart`).
+  final void Function()? _onEnqueued;
+
+  /// This client's identity for the cross-engine flush lease ([SyncLease]).
+  final String _leaseOwner;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   Timer? _pollTimer;
@@ -253,6 +265,7 @@ class SyncClient {
       ),
     );
     _bus.notify();
+    _onEnqueued?.call();
   }
 
   /// Live only while a flush is running, null the rest of the time. [total]
@@ -276,8 +289,13 @@ class SyncClient {
   Future<void> flushQueue({String? stopAfterId}) async {
     if (_flushing) return;
     if (await isOffline) return;
+    // FR-4.4 — the app and a background run are separate engines sharing one
+    // queue. Whoever doesn't hold the lease steps aside; the holder drains
+    // everything anyway.
+    if (!await _db.tryAcquireFlushLease(_leaseOwner)) return;
     _flushing = true;
     var changed = false;
+    var stopped = false;
 
     try {
       final pending = await _db.listMutations();
@@ -344,32 +362,43 @@ class SyncClient {
           // checks as unrecoverable 4xxs. `ApiClient`'s interceptor already
           // fired `onLocationRequired`, which `LocationCheckInGate` turns
           // into a blocking check-in prompt; `CheckInController.checkIn()`
-          // resumes this queue once a fix lands.
-          if (e.isLocationRequired) break;
-
-          final attempts = mutation.attempts + 1;
-          final drop =
-              attempts >= Env.maxMutationAttempts ||
-              (e.status >= 400 && e.status < 500);
-          if (drop) {
-            await _db.addConflict(
-              label: mutation.label,
-              url: mutation.url,
-              reason: e.message,
-            );
-            await _db.deleteMutation(mutation.clientMutationId);
-          } else {
-            await _db.bumpAttempts(mutation.clientMutationId, attempts);
+          // resumes this queue once a fix lands. A 401 (expired session)
+          // stops the run for the same reason — see [classifyFlushFailure].
+          switch (classifyFlushFailure(
+            status: e.status,
+            attemptsSoFar: mutation.attempts,
+            maxAttempts: Env.maxMutationAttempts,
+          )) {
+            case FlushOutcome.stopRun:
+              stopped = true;
+            case FlushOutcome.drop:
+              await _db.addConflict(
+                label: mutation.label,
+                url: mutation.url,
+                reason: e.message,
+              );
+              await _db.deleteMutation(mutation.clientMutationId);
+              changed = true;
+            case FlushOutcome.retryLater:
+              await _db.bumpAttempts(
+                mutation.clientMutationId,
+                mutation.attempts + 1,
+              );
+              changed = true;
           }
-          changed = true;
+          if (stopped) break;
         }
 
+        // Renew the lease after every item, so a long drain over a slow
+        // link (8 photos per check) never lets it lapse mid-run.
+        await _db.tryAcquireFlushLease(_leaseOwner);
         _progress = SyncProgress(completed: i + 1, total: total);
         _bus.notify();
         if (mutation.clientMutationId == stopAfterId) break;
       }
     } finally {
       _flushing = false;
+      await _db.releaseFlushLease(_leaseOwner);
       if (_progress != null) {
         _progress = null;
         _bus.notify();
@@ -427,7 +456,12 @@ class SyncClient {
     final conflict = body is Map ? body['captureConflict'] : null;
     final message = conflict is Map ? conflict['message'] : null;
     if (message is! String || message.isEmpty) return;
-    await _db.addConflict(label: label, url: url, reason: message, dropped: false);
+    await _db.addConflict(
+      label: label,
+      url: url,
+      reason: message,
+      dropped: false,
+    );
     _bus.notify();
   }
 

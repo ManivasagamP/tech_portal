@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_sqlcipher/sqflite.dart';
 
 import '../c2o/route_pack.dart' show RouteScope;
+import 'flush_policy.dart' show SyncLease;
 
 /// One queued upload inside a [PendingMutation] — a photo, a voice note, a
 /// face capture. Uploaded independently on flush and its own [placeholder]
@@ -233,7 +234,9 @@ class CachedC2oAsset {
     assetId: row['asset_id'] as String,
     assetReferenceId: row['asset_reference_id'] as String?,
     scanToken: row['scan_token'] as String?,
-    claims: Map<String, dynamic>.from(jsonDecode(row['claims'] as String) as Map),
+    claims: Map<String, dynamic>.from(
+      jsonDecode(row['claims'] as String) as Map,
+    ),
     cachedAt: DateTime.fromMillisecondsSinceEpoch(row['cached_at'] as int),
     packStamp: row['pack_stamp'] as String?,
   );
@@ -334,11 +337,16 @@ class VerificationDraft {
   final Map<String, dynamic> payload;
   final DateTime updatedAt;
 
-  factory VerificationDraft.fromRow(Map<String, Object?> row) => VerificationDraft(
-    assetId: row['asset_id'] as String,
-    payload: Map<String, dynamic>.from(jsonDecode(row['payload'] as String) as Map),
-    updatedAt: DateTime.fromMillisecondsSinceEpoch(row['updated_at'] as int),
-  );
+  factory VerificationDraft.fromRow(Map<String, Object?> row) =>
+      VerificationDraft(
+        assetId: row['asset_id'] as String,
+        payload: Map<String, dynamic>.from(
+          jsonDecode(row['payload'] as String) as Map,
+        ),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(
+          row['updated_at'] as int,
+        ),
+      );
 
   Map<String, Object?> toRow() => {
     'asset_id': assetId,
@@ -393,16 +401,21 @@ class DownloadedRoutePack {
   /// against" THRESHOLD is a product/UI decision, not baked in here.
   Duration get age => DateTime.now().difference(asOf);
 
-  factory DownloadedRoutePack.fromRow(Map<String, Object?> row) => DownloadedRoutePack(
-    scope: RouteScope.values.byName(row['scope'] as String),
-    id: row['scope_id'] as String,
-    asOf: DateTime.fromMillisecondsSinceEpoch(row['as_of'] as int),
-    versionTag: row['version_tag'] as String,
-    assetIds: List<String>.from(jsonDecode(row['asset_ids'] as String) as List),
-    downloadedAt: DateTime.fromMillisecondsSinceEpoch(row['downloaded_at'] as int),
-    packageId: row['package_id'] as String?,
-    projectId: row['project_id'] as String?,
-  );
+  factory DownloadedRoutePack.fromRow(Map<String, Object?> row) =>
+      DownloadedRoutePack(
+        scope: RouteScope.values.byName(row['scope'] as String),
+        id: row['scope_id'] as String,
+        asOf: DateTime.fromMillisecondsSinceEpoch(row['as_of'] as int),
+        versionTag: row['version_tag'] as String,
+        assetIds: List<String>.from(
+          jsonDecode(row['asset_ids'] as String) as List,
+        ),
+        downloadedAt: DateTime.fromMillisecondsSinceEpoch(
+          row['downloaded_at'] as int,
+        ),
+        packageId: row['package_id'] as String?,
+        projectId: row['project_id'] as String?,
+      );
 
   Map<String, Object?> toRow() => {
     'scope': scope.name,
@@ -423,7 +436,11 @@ abstract interface class RoutePackStore {
 }
 
 class OfflineDb
-    implements C2oAssetCache, TagIssueLog, VerificationDraftStore, RoutePackStore {
+    implements
+        C2oAssetCache,
+        TagIssueLog,
+        VerificationDraftStore,
+        RoutePackStore {
   OfflineDb._(this._db);
 
   static const _fileName = 'fusion_eco_offline.db';
@@ -676,6 +693,54 @@ class OfflineDb
     'value': value,
   }, conflictAlgorithm: ConflictAlgorithm.replace);
 
+  static const _flushLeaseKey = 'flush_lease';
+
+  /// FR-4.4 — take or renew the queue-drain lease (see [SyncLease]). Read and
+  /// write happen in one transaction, so the app and a background run racing
+  /// for it can't both win.
+  Future<bool> tryAcquireFlushLease(String owner) =>
+      _db.transaction((txn) async {
+        final rows = await txn.query(
+          'sync_meta',
+          where: 'key = ?',
+          whereArgs: [_flushLeaseKey],
+          limit: 1,
+        );
+        final current = SyncLease.decode(
+          rows.isEmpty ? null : rows.first['value'] as String?,
+        );
+        final now = DateTime.now();
+        if (!SyncLease.canTake(current, owner, now)) return false;
+        await txn.insert('sync_meta', {
+          'key': _flushLeaseKey,
+          'value': SyncLease(
+            owner: owner,
+            expiresAt: now.add(SyncLease.ttl),
+          ).encode(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        return true;
+      });
+
+  /// Gives the lease up, but only if [owner] still holds it.
+  Future<void> releaseFlushLease(String owner) => _db.transaction((txn) async {
+    final rows = await txn.query(
+      'sync_meta',
+      where: 'key = ?',
+      whereArgs: [_flushLeaseKey],
+      limit: 1,
+    );
+    final current = SyncLease.decode(
+      rows.isEmpty ? null : rows.first['value'] as String?,
+    );
+    if (current?.owner == owner) {
+      await txn.delete(
+        'sync_meta',
+        where: 'key = ?',
+        whereArgs: [_flushLeaseKey],
+      );
+    }
+  });
+
   Future<void> addConflict({
     required String label,
     required String url,
@@ -737,20 +802,24 @@ class OfflineDb
 
   @override
   Future<List<TagIssueReport>> listTagIssueReports() async {
-    final rows = await _db.query('tag_issue_reports', orderBy: 'reported_at DESC');
+    final rows = await _db.query(
+      'tag_issue_reports',
+      orderBy: 'reported_at DESC',
+    );
     return rows.map(TagIssueReport.fromRow).toList();
   }
 
   @override
-  Future<void> saveDraft(String assetId, Map<String, dynamic> payload) => _db.insert(
-    'verification_drafts',
-    VerificationDraft(
-      assetId: assetId,
-      payload: payload,
-      updatedAt: DateTime.now(),
-    ).toRow(),
-    conflictAlgorithm: ConflictAlgorithm.replace,
-  );
+  Future<void> saveDraft(String assetId, Map<String, dynamic> payload) =>
+      _db.insert(
+        'verification_drafts',
+        VerificationDraft(
+          assetId: assetId,
+          payload: payload,
+          updatedAt: DateTime.now(),
+        ).toRow(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
   @override
   Future<VerificationDraft?> getDraft(String assetId) async {
@@ -793,7 +862,7 @@ class OfflineDb
   Future<void> wipe() async {
     await _db.delete('pending_mutations');
     await _db.delete('cached_entities');
-    await _db.delete('sync_meta');
+    await _db.delete('sync_meta'); // includes the FR-4.4 flush lease
     await _db.delete('conflicts');
     await _db.delete('c2o_assets');
     await _db.delete('tag_issue_reports');
