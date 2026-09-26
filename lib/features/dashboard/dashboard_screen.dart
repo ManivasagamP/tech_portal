@@ -14,6 +14,7 @@ import '../../state/locale_controller.dart';
 import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
 import '../../widgets/app_text.dart';
+import '../permits/widgets/permit_dashboard_card.dart';
 import '../snags/widgets/snag_dashboard_card.dart';
 import '../ar/widgets/ar_entry_widgets.dart';
 import '../../widgets/common.dart';
@@ -134,6 +135,9 @@ class DashboardScreen extends ConsumerWidget {
               // Snag Assistant (docs/snag-assistant.md) — its own widget so
               // this screen only knows where the door is, not what's behind it.
               const SnagDashboardCard(),
+              const SizedBox(height: 12),
+              // Permit to Work (docs/permit-to-work.md) — same doorway pattern.
+              const PermitDashboardCard(),
               const SizedBox(height: 12),
               // AR BIM overlay: scan a board, open a floor, or an install run.
               const ArDashboardCard(),

@@ -24,6 +24,9 @@ import '../features/order_detail/order_detail_screen.dart';
 import '../features/orders/orders_screen.dart';
 import '../features/overview/overview_screen.dart';
 import '../core/c2o/route_pack.dart';
+import '../features/permits/permit_detail_screen.dart';
+import '../features/permits/permit_resolve_screen.dart';
+import '../features/permits/permits_hub_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/routes/route_detail_screen.dart';
 import '../features/routes/route_list_screen.dart';
@@ -36,6 +39,7 @@ import '../features/snags/snag_survey_screen.dart';
 import '../features/snags/snag_verify_screen.dart';
 import '../features/snags/snag_walk_screen.dart';
 import '../features/sync/sync_center_screen.dart';
+import '../features/bim_viewer/bim_viewer_screen.dart';
 import '../features/twin/twin_screen.dart';
 import '../features/web/web_page_screen.dart';
 import '../state/auth_controller.dart';
@@ -70,6 +74,14 @@ abstract final class Routes {
   static String orderDetail(String type, String id) => '/orders/$type/$id';
   static String inspectionDetail(String id) => '/inspections/$id';
   static String twin(String assetId) => '/twin/$assetId';
+
+  /// The 2D/3D model viewer (docs/bim-viewer.md) for a floor, optionally
+  /// opened on an asset (selected and framed). Alongside [twin], which
+  /// stays the web's xeokit page.
+  static String bimViewer(String floorId, {String? assetId, String? assetName}) {
+    final query = {'assetId': ?assetId, 'name': ?assetName};
+    return Uri(path: '/bim-viewer/$floorId', queryParameters: query.isEmpty ? null : query).toString();
+  }
   static String assetDetail(String assetId) => '/asset/$assetId';
 
   // Snag Assistant (docs/snag-assistant.md). The server's notification link
@@ -80,6 +92,18 @@ abstract final class Routes {
   static String snagSurvey(String surveyId) => '/snags/survey/$surveyId';
   static String snagVerify(String buildingId) =>
       Uri(path: '/snags/verify', queryParameters: {'buildingId': buildingId}).toString();
+
+  // Permit to Work (docs/permit-to-work.md). The server's notification/push
+  // link `/technician/permits/<id>` maps onto [permitDetail] the same way
+  // every other technician link does (prefix strip in notification_route.dart
+  // / push_service.dart) — no special-casing needed there.
+  static const permits = '/permits';
+  static String permitDetail(String id) => '/permits/$id';
+
+  /// A scanned worksite QR (`/permit-check/<token>`) lands on the resolver
+  /// screen, which looks the token up and replaces itself with [permitDetail].
+  static String permitByToken(String token) =>
+      '/permits/by-token/${Uri.encodeComponent(token)}';
 
   /// UC-5 — a snag raised from context (an asset, a work order) arrives
   /// with that context pre-filled. Only strings cross the router.
@@ -449,6 +473,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootKey,
         builder: (context, state) => SnagDetailScreen(snagId: state.pathParameters['id'] ?? ''),
       ),
+      // Permit to Work — the fixed segments must stay above `/permits/:id`.
+      GoRoute(
+        path: Routes.permits,
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const PermitsHubScreen(),
+      ),
+      GoRoute(
+        path: '/permits/by-token/:token',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => PermitResolveScreen(
+          token: Uri.decodeComponent(state.pathParameters['token'] ?? ''),
+        ),
+      ),
+      GoRoute(
+        path: '/permits/:id',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => PermitDetailScreen(permitId: state.pathParameters['id'] ?? ''),
+      ),
       // AR BIM overlay. The fixed segments stay above the `:code` routes.
       GoRoute(
         path: '/ar',
@@ -505,6 +547,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => ArSpareScreen(
           code: state.pathParameters['code'] ?? '',
           floorId: state.uri.queryParameters['floorId'],
+        ),
+      ),
+      GoRoute(
+        path: '/bim-viewer/:floorId',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => BimViewerScreen(
+          floorId: state.pathParameters['floorId'] ?? '',
+          assetId: state.uri.queryParameters['assetId'],
+          assetName: state.uri.queryParameters['name'],
         ),
       ),
       GoRoute(

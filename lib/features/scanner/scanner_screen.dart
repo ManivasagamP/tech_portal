@@ -16,6 +16,7 @@ import '../../app/router.dart';
 import '../../core/ar/marker_code.dart';
 import '../../core/c2o/c2o_asset_resolver.dart';
 import '../../core/c2o/route_pack.dart';
+import '../../core/permit/permit_gas.dart';
 import '../../core/utils/qr_payload.dart';
 import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
@@ -147,6 +148,20 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       // Replace, not push: back from the board sheet goes where the scan
       // came from, and the scanner can't re-read the same board behind it.
       context.pushReplacement(Routes.arMarker(markerCode));
+      return;
+    }
+
+    // Permit to Work worksite QR (docs/permit-to-work.md): a URL scheme like
+    // AR boards, so it is checked the same place, before C2O and the general
+    // scheme claim the value. `permitCheckTokenFromScan` only matches
+    // `/permit-check/<token>` — anything else falls through untouched, same
+    // C2O/AR scan precedence CLAUDE.md documents.
+    final permitToken = permitCheckTokenFromScan(raw);
+    if (permitToken != null) {
+      await _buzz();
+      if (!mounted) return;
+      setState(() => _processing = false);
+      context.pushReplacement(Routes.permitByToken(permitToken));
       return;
     }
 

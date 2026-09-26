@@ -124,7 +124,8 @@ class _MemoryPackStore implements ArPackStore {
   }) async {
     manifestSaves++;
     final floorId = manifest.scopeId;
-    manifests[floorId] = manifest;
+    manifests[_key(manifest.scope, floorId)] = manifest;
+    if (manifest.scope != 'floor') return; // like OfflineDb: only a floor pack owns the side tables
     this.corners[floorId] = corners;
     grid[floorId] = gridLines;
     this.markers.removeWhere((_, v) => v.$1['floorId'] == floorId && !v.$2);
@@ -136,15 +137,21 @@ class _MemoryPackStore implements ArPackStore {
     }
   }
 
+  /// Floor packs keep the bare floor id as their key (what the older tests
+  /// read); other scopes are `scope:id`.
+  static String _key(String scope, String id) => scope == 'floor' ? id : '$scope:$id';
+
   @override
-  Future<StoredArManifest?> getArManifest(String scopeId, {String scope = 'floor'}) async => manifests[scopeId];
+  Future<StoredArManifest?> getArManifest(String scopeId, {String scope = 'floor'}) async =>
+      manifests[_key(scope, scopeId)];
 
   @override
   Future<List<StoredArManifest>> listArManifests() async => manifests.values.toList();
 
   @override
   Future<void> deleteArManifest(String scopeId, {String scope = 'floor'}) async {
-    manifests.remove(scopeId);
+    manifests.remove(_key(scope, scopeId));
+    if (scope != 'floor') return;
     corners.remove(scopeId);
     grid.remove(scopeId);
     markers.removeWhere((_, v) => v.$1['floorId'] == scopeId && !v.$2);
@@ -291,6 +298,11 @@ final _tileHave = _bytes('tile already on the phone');
 final _hashNear = Sha256.hex(_tileNear);
 final _hashFar = Sha256.hex(_tileFar);
 final _hashHave = Sha256.hex(_tileHave);
+
+final _tileSolid = _bytes('solid walls for the model viewer');
+final _hashSolid = Sha256.hex(_tileSolid);
+
+Map<String, dynamic> _solidTile(String hash) => {..._tile(hash, 0, 400), 'layer': 'architecture_solid'};
 
 Map<String, dynamic> _tile(String hash, double x, int bytes) => {
       'hash': hash,
@@ -820,6 +832,89 @@ void main() {
     });
   });
 
+  group('fetchViewerManifest — the model viewer\'s solid-wall pack', () {
+    test('asks for the solid layer and stores it beside the floor pack, never over it', () async {
+      transport
+        ..answer(_manifestPath, ArHttpResponse(status: 200, body: _manifest(), etag: 'floor-1'))
+        ..answer(
+          _manifestPath,
+          ArHttpResponse(
+            status: 200,
+            body: {
+              ..._manifest(tiles: [_solidTile(_hashSolid)]),
+              'corners': <Object>[],
+              'gridLines': <Object>[],
+              'markers': <Object>[],
+            },
+            etag: 'viewer-1',
+          ),
+        );
+      await repo.fetchManifest('flr-3');
+      final v = await repo.fetchViewerManifest('flr-3');
+
+      expect(transport.calls.last.query, {'scope': 'floor', 'id': 'flr-3', 'layers': 'architecture_solid'});
+      expect(v!.tiles.single.layer, 'architecture_solid');
+      expect(store.manifests['viewer:flr-3']!.etag, 'viewer-1');
+      expect(store.manifests['viewer:flr-3']!.tileHashes, [_hashSolid]);
+      // The AR floor pack and its side tables are untouched.
+      expect(store.manifests['flr-3']!.etag, 'floor-1');
+      expect(store.manifests['flr-3']!.tileHashes, hasLength(3));
+      expect(store.corners['flr-3'], hasLength(1));
+      expect(store.markers['7K3QX9R'], isNotNull);
+    });
+
+    test('304 → the stored copy; offline → the stored copy; nothing stored offline → null', () async {
+      transport
+        ..answer(_manifestPath, ArHttpResponse(status: 200, body: _manifest(tiles: [_solidTile(_hashSolid)]), etag: 'v1'))
+        ..answer(_manifestPath, const ArHttpResponse(status: 304))
+        ..answer(_manifestPath, const NetworkFailure());
+      await repo.fetchViewerManifest('flr-3');
+      final again = await repo.fetchViewerManifest('flr-3');
+      expect(transport.calls[1].ifNoneMatch, 'v1');
+      expect(again!.notModified, isTrue);
+      expect(again.tiles.single.hash, _hashSolid);
+      final offline = await repo.fetchViewerManifest('flr-3');
+      expect(offline!.fromCache, isTrue);
+      expect(await repo.localViewerManifest('flr-3'), isNotNull);
+
+      final other = ArRepository.withSeams(
+        transport: _FakeTransport()..answer(_manifestPath, const NetworkFailure()),
+        sync: sync,
+        store: _MemoryPackStore(),
+        files: files,
+      );
+      expect(await other.fetchViewerManifest('flr-3'), isNull);
+    });
+
+    test('a server from before the solid layer (400 BAD_LAYERS) is not an error: null', () async {
+      transport.answer(
+        _manifestPath,
+        const HttpFailure(status: 400, message: 'bad', body: {'code': 'BAD_LAYERS', 'message': 'bad'}),
+      );
+      expect(await repo.fetchViewerManifest('flr-3'), isNull);
+    });
+
+    test('tile GC keeps the viewer pack\'s tiles; deleting the floor pack drops both', () async {
+      transport
+        ..answer(_manifestPath, ArHttpResponse(status: 200, body: _manifest(tiles: [_tile(_hashNear, 0, 200)])))
+        ..answer(_manifestPath, ArHttpResponse(status: 200, body: _manifest(tiles: [_solidTile(_hashSolid)])));
+      final floor = await repo.fetchManifest('flr-3');
+      final viewer = await repo.fetchViewerManifest('flr-3');
+      transport.bytes['/api/bim/ar/tiles/$_hashNear'] = _tileNear;
+      transport.bytes['/api/bim/ar/tiles/$_hashSolid'] = _tileSolid;
+      await repo.downloadTiles(floor);
+      await repo.downloadTiles(viewer!);
+      expect(store.tiles.keys, containsAll([_hashNear, _hashSolid]));
+
+      await repo.gcTiles(capBytes: 0);
+      expect(store.tiles.keys, containsAll([_hashNear, _hashSolid]), reason: 'both still referenced');
+
+      await repo.deleteFloorPack('flr-3');
+      expect(store.manifests, isEmpty);
+      expect(store.tiles, isEmpty);
+    });
+  });
+
   group('floors and preferences', () {
     test('floors show what is on the phone and what has an update', () async {
       transport.answer(_manifestPath, ArHttpResponse(status: 200, body: _manifest(tiles: [_tile(_hashNear, 0, 200)])));
@@ -875,6 +970,17 @@ void main() {
       expect(await repo.rememberedMethod('flr-3'), ArSetupMethod.corners);
       await repo.rememberMethod('flr-3', null);
       expect(await repo.rememberedMethod('flr-3'), isNull);
+    });
+
+    test('a viewer pack on the same floor is not a second floor', () async {
+      transport
+        ..answer(_manifestPath, ArHttpResponse(status: 200, body: _manifest()))
+        ..answer(_manifestPath, ArHttpResponse(status: 200, body: _manifest(tiles: [_solidTile(_hashSolid)])));
+      await repo.fetchManifest('flr-3');
+      await repo.fetchViewerManifest('flr-3');
+      final floors = await repo.floorsForBuilding('bld-1'); // offline: built from packs
+      expect(floors, hasLength(1));
+      expect(floors.single.models.single.bytes, 600, reason: 'AR sizes only');
     });
 
     test('plan offline falls back to the stored manifest\'s corners', () async {

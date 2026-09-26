@@ -1316,6 +1316,10 @@ class OfflineDb
       manifest.toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    // Only a floor pack owns the floor's corners, grid lines and boards. A
+    // second pack on the same floor id (the model viewer's `viewer` scope,
+    // docs/bim-viewer.md) must not wipe them — mirrors deleteArManifest.
+    if (manifest.scope != 'floor') return;
 
     await txn.delete('ar_corners', where: 'floor_id = ?', whereArgs: [floorId]);
     for (final c in corners) {

@@ -120,6 +120,9 @@ String? _routeForPushData({
   if (title == 'New assignment invite') return Routes.invites;
   if (entityType == 'Inspection') return Routes.inspectionDetail(entityId);
   if (entityType == 'Snag') return Routes.snagDetail(entityId);
+  // Permit to Work: the link `/technician/permits/<id>` maps through the
+  // prefix strip above; this covers a link-less one.
+  if (entityType == 'Permit') return Routes.permitDetail(entityId);
   // AR install request: the link `/technician/ar/install?floorId=<id>` maps
   // through the prefix strip above; a link-less one names the floor. The
   // server stamps `ar_install_request` (installRequestService.ts).

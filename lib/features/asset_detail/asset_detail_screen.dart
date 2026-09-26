@@ -176,6 +176,15 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _ViewIn3DButton(detail: detail),
                         ),
+                      // The in-app 2D/3D model viewer (docs/bim-viewer.md):
+                      // the floor's model and plan, offline from the floor
+                      // pack. Added next to the xeokit twin button above,
+                      // not instead of it. Needs a floor, like AR.
+                      if (detail.floorId != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _ModelViewerButton(detail: detail),
+                        ),
                       // AR Locate (docs/ar-bim-overlay.md §1.1): the asset
                       // drawn through walls where it really is. Needs a floor;
                       // the AR screens find the model and place it.
@@ -287,6 +296,43 @@ class _ViewIn3DButton extends ConsumerWidget {
         label: AppText.label(
           'order_detail.view_in_3d'.getString(context),
           color: Colors.white,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+/// Entry point into the 2D/3D model viewer (`Routes.bimViewer`), opened on
+/// this asset. Outlined like the floor-plan button: wayfinding, secondary
+/// to verifying the asset.
+class _ModelViewerButton extends StatelessWidget {
+  const _ModelViewerButton({required this.detail});
+
+  final AssetDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => context.push(
+          Routes.bimViewer(
+            detail.floorId!,
+            assetId: detail.id,
+            assetName: detail.assetName ?? detail.assetReferenceId ?? detail.id,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: FeColors.ink,
+          side: const BorderSide(color: FeColors.ink, width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        icon: const Icon(LucideIcons.columns2, size: 16),
+        label: AppText.label(
+          'bim_viewer.open_button'.getString(context),
+          color: FeColors.ink,
           weight: FontWeight.w700,
         ),
       ),

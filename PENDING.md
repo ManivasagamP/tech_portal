@@ -22,9 +22,18 @@ Work this repo still owes: unfinished, partly done, blocked, or built but never 
 - **Next step:** <the first concrete action>
 -->
 
-Next number: **P-011**
+Next number: **P-012**
 
 ## Open
+
+### P-011 · Model viewer (2D/3D): Dart side never analyzed, tested or run on a device
+- **Status:** needs verification · **Priority:** P2 · **Area:** model viewer (`lib/core/bim_viewer`, `lib/features/bim_viewer`, `lib/state/bim_viewer_*`, `assets/bim_viewer`, viewer scope in `ar_repository.dart` / `offline_db.dart`)
+- **Found:** 2026-09-26 (V1 build; the user said not to test this pass)
+- **Done so far:** the viewer page ran in headless Chromium against real server-built tiles, 22/22 checks (`tool/bim_viewer/e2e.mjs`); `viewer_math.js` 11/11 (`node --test tool/bim_viewer/viewer_math.test.mjs`); server side 325/325 vitest. The Dart tests are written: `test/bim_view_wire_test.dart`, `bim_plan_view_math_test.dart`, `viewer_asset_server_test.dart`, `bim_viewer_controller_test.dart`, `bim_viewer_screen_test.dart`, and the viewer group in `ar_repository_test.dart` (its memory store is now scope-aware).
+- **Left:** `flutter pub get --enforce-lockfile`, `flutter analyze`, `flutter test test/bim_* test/viewer_asset_server_test.dart test/ar_repository_test.dart` on ≥ 3.44, then fix what they report. On a device: Android WebView (WebGL2, `EagerGestureRecognizer` over split view, loopback cleartext) and iOS WKWebView; frame rate on a large floor (60+ tiles); walk joystick in RTL; a Demo-mode walk-through. The server's `?layers=` needs a DB where `applyArGeometryTables.ts --apply` has run, plus a rebuild (server P-030).
+- **Why deferred:** the user asked for no testing this pass; no device on this Mac.
+- **Where:** [docs/bim-viewer.md §8](docs/bim-viewer.md#8-verification-be-honest)
+- **Next step:** bootstrap the slim 3.47.5 SDK (LEARNINGS → Platform) and run analyze plus the test files above.
 
 ### P-004 · AR (FieldOps): never analyzed or tested on Flutter ≥ 3.44, never run on a device
 - **Status:** needs verification · **Priority:** P2 · **Area:** AR (`lib/core/ar`, `lib/state/ar_*`, `lib/features/ar`, `lib/data/ar_repository.dart`, OfflineDb v10)

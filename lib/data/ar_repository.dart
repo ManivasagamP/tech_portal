@@ -235,7 +235,12 @@ class ArRepository {
     final floors = ArFloorSummary.listFromBody(read.data);
     if (floors.isEmpty) return floors;
 
-    final stored = {for (final m in await _store.listArManifests()) m.scopeId: m};
+    // Floor packs only: the model viewer's solid-wall pack (scope `viewer`)
+    // shares the floor id and would otherwise overwrite the floor's entry.
+    final stored = {
+      for (final m in await _store.listArManifests())
+        if (m.scope == 'floor') m.scopeId: m,
+    };
     if (stored.isEmpty) return floors;
     final tilesOnDevice = {for (final t in await _store.listArTiles()) t.hash};
 
@@ -251,7 +256,7 @@ class ArRepository {
   Future<List<ArFloorSummary>> _floorsOnDevice(String buildingId) async {
     final out = <ArFloorSummary>[];
     for (final s in await _store.listArManifests()) {
-      if (s.buildingId != buildingId) continue;
+      if (s.scope != 'floor' || s.buildingId != buildingId) continue;
       final m = Manifest.fromJson(s.json);
       if (m == null) continue;
       out.add(ArFloorSummary(
@@ -459,6 +464,76 @@ class ArRepository {
     return stored == null ? null : Manifest.fromJson(stored.json)?.copyWith(fromCache: true, etag: stored.etag);
   }
 
+  // ------------------------------------------------------- model viewer pack
+
+  /// Scope of the model viewer's extra pack in `ar_manifests` (next to the
+  /// floor's own `floor` pack, same scope id = floor id).
+  static const viewerScope = 'viewer';
+
+  /// The tile layer only the model viewer asks for: architecture as shaded
+  /// triangles (the AR `architecture` layer is edges only). Server:
+  /// `GET /manifest?layers=architecture_solid` (docs/bim-viewer.md §3).
+  static const solidArchitectureLayer = 'architecture_solid';
+
+  /// The floor's `architecture_solid` tiles for the 2D/3D model viewer,
+  /// stored as a second, tiny pack (scope [viewerScope]) so the AR floor
+  /// pack and its ETag are never touched. The viewer loads the AR pack's
+  /// tiles plus these. Same ETag / 304 / offline rules as [fetchManifest].
+  ///
+  /// Kept as a manifest row (not a pref) on purpose: tile GC keeps whatever
+  /// a stored manifest references, so the solid tiles survive a clean-up
+  /// exactly as long as the viewer pack does.
+  ///
+  /// A server that predates the layer answers 400 `BAD_LAYERS`; that and a
+  /// build without solid tiles both come back as an empty tile list, and the
+  /// viewer falls back to walls extruded from the plan.
+  Future<Manifest?> fetchViewerManifest(String floorId) async {
+    final stored = await _store.getArManifest(floorId, scope: viewerScope);
+    final storedManifest = stored == null ? null : Manifest.fromJson(stored.json);
+    final query = <String, dynamic>{'scope': 'floor', 'id': floorId, 'layers': solidArchitectureLayer};
+    try {
+      var response = await _transport.getJson(
+        '$_base/manifest',
+        query: query,
+        ifNoneMatch: storedManifest == null ? null : stored!.etag,
+      );
+      if (response.notModified) {
+        if (storedManifest != null) return storedManifest.copyWith(notModified: true, etag: stored!.etag);
+        response = await _transport.getJson('$_base/manifest', query: query);
+      }
+      final manifest = Manifest.fromBody(response.body);
+      if (manifest == null) return storedManifest?.copyWith(fromCache: true);
+      final solid = [for (final t in manifest.tiles) if (t.layer == solidArchitectureLayer) t];
+      final etag = response.etag ?? manifest.etag;
+      await _store.saveArManifest(
+        StoredArManifest(
+          scope: viewerScope,
+          scopeId: floorId,
+          buildingId: manifest.buildingId,
+          etag: etag,
+          json: manifest.raw,
+          tileHashes: [for (final t in solid) t.hash],
+          savedAt: _clock(),
+        ),
+      );
+      return manifest.copyWith(etag: etag);
+    } on NetworkFailure {
+      return storedManifest?.copyWith(fromCache: true);
+    } on HttpFailure catch (e) {
+      // 400 BAD_LAYERS: a server from before the solid layer. Not an error
+      // for the viewer — it draws plan massing instead.
+      if (e.status == 400) return null;
+      if (storedManifest != null) return storedManifest.copyWith(fromCache: true);
+      throw ArApiError.fromBody(e.status, e.body, fallbackMessage: e.message);
+    }
+  }
+
+  /// The stored viewer pack for a floor, without touching the network.
+  Future<Manifest?> localViewerManifest(String floorId) async {
+    final stored = await _store.getArManifest(floorId, scope: viewerScope);
+    return stored == null ? null : Manifest.fromJson(stored.json)?.copyWith(fromCache: true, etag: stored.etag);
+  }
+
   // ------------------------------------------------------------------- tiles
 
   /// Downloads the manifest's tiles that aren't on the phone yet (a hash
@@ -637,6 +712,7 @@ class ArRepository {
   /// progress) and then every tile no other floor still needs.
   Future<int> deleteFloorPack(String floorId) async {
     await _store.deleteArManifest(floorId);
+    await _store.deleteArManifest(floorId, scope: viewerScope);
     return gcTiles(all: true);
   }
 
