@@ -1,0 +1,1237 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_localization/flutter_localization.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../app/router.dart';
+import '../../../core/ar/alignment_estimator.dart';
+import '../../../core/ar/corner_matcher.dart';
+import '../../../core/ar/marker_code.dart';
+import '../../../core/ar/vec.dart';
+import '../../../state/ar_prefs_controller.dart';
+import '../../../state/ar_session_controller.dart';
+import '../../../state/ar_setup_controller.dart';
+import '../../../theme/fe_ar_colors.dart';
+import '../../../theme/fe_colors.dart';
+import '../../../widgets/app_text.dart';
+import '../ar_ui.dart';
+import '../widgets/ar_chrome.dart';
+import '../widgets/ar_mini_plan.dart';
+import '../widgets/ar_status.dart';
+import '../widgets/ar_visuals.dart';
+import 'ar_method_chooser.dart';
+import 'ar_register_board_card.dart';
+
+/// Everything drawn over the camera while the model is being placed
+/// (canvas row 6 + TabMethod/TabSnap/TabRegister and their phone twins).
+///
+/// Phone: one card at the bottom, in the thumb zone; the pin and chips on
+/// the camera. iPad (≥ 900 px): the guidance card with its mini plan sits
+/// top-left, like TabSnap, and actions stay inside it or centred at the
+/// bottom — nothing important under the phone's top-left dead zone.
+class ArSetupOverlay extends ConsumerStatefulWidget {
+  const ArSetupOverlay({super.key, required this.tablet, required this.topInset});
+
+  final bool tablet;
+
+  /// Height of the session's top bar, so chips sit under it.
+  final double topInset;
+
+  @override
+  ConsumerState<ArSetupOverlay> createState() => _ArSetupOverlayState();
+}
+
+class _ArSetupOverlayState extends ConsumerState<ArSetupOverlay> {
+  /// M2: the user tapped "Start aligning" (or the pack was already local).
+  var _readyAck = false;
+  var _planOpen = false;
+
+  ArSetupController get _ctrl => ref.read(arSetupProvider.notifier);
+
+  @override
+  Widget build(BuildContext context) {
+    final setup = ref.watch(arSetupProvider);
+    final s = ref.watch(arSessionProvider);
+    final tablet = widget.tablet;
+
+    final showReady = !_readyAck &&
+        s.args?.focusCode != null &&
+        s.args?.installCode == null &&
+        (setup.step == ArSetupStep.boardScan || setup.step == ArSetupStep.choose);
+
+    final Widget card = showReady ? _ReadyCard(onStart: () => setState(() => _readyAck = true)) : _cardFor(context, setup, s);
+
+    return Stack(
+      children: [
+        if (setup.step == ArSetupStep.cornerA || setup.step == ArSetupStep.cornerB)
+          Center(
+            child: ArSnapPin(
+              snapped: setup.snapped != null,
+              faceAngles: setup.snapped == null ? null : _screenFaces(setup.snapped!),
+            ),
+          ),
+        if (setup.step == ArSetupStep.boardLock)
+          Center(child: ArLockRing(progress: setup.lockProgress, ok: setup.sighting?.acceptable ?? true)),
+        if (setup.step == ArSetupStep.boardScan && !showReady) const Center(child: _BoardViewfinder()),
+        PositionedDirectional(
+          top: widget.topInset + 8,
+          start: tablet ? 380 : 16,
+          end: tablet ? 100 : 16,
+          child: _TopChips(setup: setup, session: s),
+        ),
+        if (tablet && _stepUsesGridRail(setup.step))
+          PositionedDirectional(
+            top: widget.topInset + 8,
+            end: 20,
+            child: _GridRail(visible: s.gridVisible),
+          )
+        else if (!tablet && _stepUsesGridRail(setup.step))
+          PositionedDirectional(
+            top: widget.topInset + 64,
+            end: 12,
+            child: Column(
+              children: [
+                ArGlassButton(
+                  icon: ArIcons.grid,
+                  label: 'ar.tool.grid'.getString(context),
+                  active: s.gridVisible,
+                  onTap: () => ref.read(arSessionProvider.notifier).setGridVisible(!s.gridVisible),
+                ),
+                const SizedBox(height: 8),
+                ArGlassButton(
+                  icon: ArIcons.plan,
+                  label: 'ar.menu.floor_plan'.getString(context),
+                  active: _planOpen,
+                  onTap: () => setState(() => _planOpen = !_planOpen),
+                ),
+              ],
+            ),
+          ),
+        if (!tablet && _planOpen && _stepUsesGridRail(setup.step))
+          PositionedDirectional(
+            top: widget.topInset + 64,
+            start: 16,
+            end: 72,
+            child: ArCard(
+              padding: const EdgeInsets.all(10),
+              radius: 18,
+              child: SizedBox(height: 180, child: _plan(setup, s)),
+            ),
+          ),
+        if (tablet)
+          PositionedDirectional(
+            top: widget.topInset + 8,
+            start: 20,
+            width: 340,
+            bottom: 20,
+            child: Align(
+              alignment: AlignmentDirectional.topStart,
+              child: SingleChildScrollView(child: _animated(card)),
+            ),
+          )
+        else
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16 + MediaQuery.paddingOf(context).bottom,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.66),
+              child: SingleChildScrollView(child: _animated(card)),
+            ),
+          ),
+        if (setup.otherFloorCode != null)
+          Positioned.fill(child: _OtherFloorPrompt(setup: setup)),
+      ],
+    );
+  }
+
+  bool _stepUsesGridRail(ArSetupStep step) =>
+      step == ArSetupStep.start || step == ArSetupStep.cornerA || step == ArSetupStep.cornerB;
+
+  Widget _animated(Widget card) => AnimatedSwitcher(
+    duration: const Duration(milliseconds: 260),
+    switchInCurve: Curves.easeOutCubic,
+    transitionBuilder: (child, anim) => FadeTransition(
+      opacity: anim,
+      child: SlideTransition(
+        position: Tween(begin: const Offset(0, 0.06), end: Offset.zero).animate(anim),
+        child: child,
+      ),
+    ),
+    child: KeyedSubtree(key: ValueKey(ref.read(arSetupProvider).step), child: card),
+  );
+
+  /// The detected faces as screen angles: the AR-world face directions,
+  /// relative to where the camera looks, so the drawn lines lean the same
+  /// way as the real walls (an illustration, not a projection).
+  (double, double)? _screenFaces(DetectedCorner d) {
+    final fwd = ref.read(arSessionProvider).cameraForwardAr;
+    final heading = fwd == null ? 0.0 : math.atan2(fwd.x, -fwd.z);
+    double toScreen(Vec2 f) {
+      final a = math.atan2(f.x, -f.y) - heading;
+      return math.pi / 2 + a * 0.5 + (f.x >= 0 ? -0.9 : 0.9);
+    }
+
+    return (toScreen(d.faceAAr), toScreen(d.faceBAr));
+  }
+
+  Widget _plan(ArSetupState setup, ArSessionState s) {
+    final floor = s.floor;
+    final ranked = setup.ranked;
+    final focus = setup.chosenA?.posTile.xz;
+    return ArMiniPlan(
+      plan: s.plan,
+      corners: ranked.take(12).toList(),
+      selectedCornerId: setup.step == ArSetupStep.cornerB ? setup.suggestedB?.id : setup.chosenA?.id,
+      gridLines: s.gridVisible ? (floor?.gridLines ?? const []) : const [],
+      markers: floor?.activeMarkers ?? const [],
+      camera: s.cameraTile,
+      heading: s.forwardTileXz,
+      target: s.target?.centre,
+      focus: s.plan == null ? null : focus,
+      focusRadiusM: 9,
+      onTapCorner: setup.step == ArSetupStep.start || setup.step == ArSetupStep.cornerA ? _ctrl.chooseCornerA : null,
+    );
+  }
+
+  Widget _cardFor(BuildContext context, ArSetupState setup, ArSessionState s) {
+    switch (setup.step) {
+      case ArSetupStep.choose:
+        return ArMethodChooser(tablet: widget.tablet);
+      case ArSetupStep.start:
+        return _StartCard(setup: setup, session: s, plan: _plan(setup, s), tablet: widget.tablet);
+      case ArSetupStep.cornerA:
+        return _CornerACard(setup: setup, session: s, plan: widget.tablet ? _plan(setup, s) : null);
+      case ArSetupStep.cornerB:
+        return _CornerBCard(setup: setup, session: s, plan: widget.tablet ? _plan(setup, s) : null);
+      case ArSetupStep.boardScan:
+        return _BoardScanCard(session: s);
+      case ArSetupStep.boardLock:
+        return _BoardLockCard(setup: setup);
+      case ArSetupStep.aligned:
+        return _AlignedCard(setup: setup, session: s);
+      case ArSetupStep.locked:
+        return _LockedCard(setup: setup);
+      case ArSetupStep.leaveBoard:
+        return _LeaveBoardCard(session: s);
+      case ArSetupStep.register:
+        return ArRegisterBoardCard(tablet: widget.tablet);
+      case ArSetupStep.nudge:
+        return _NudgeCard(session: s);
+      case ArSetupStep.mismatch:
+        return _MismatchCard(session: s);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ chips
+
+class _TopChips extends ConsumerWidget {
+  const _TopChips({required this.setup, required this.session});
+
+  final ArSetupState setup;
+  final ArSessionState session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chips = <Widget>[];
+    switch (setup.step) {
+      case ArSetupStep.cornerA:
+        final a = setup.chosenA;
+        final n = a == null ? 1 : setup.ranked.indexOf(a) + 1;
+        chips.add(ArGlassChip(text: arTr(context, 'ar.corner.chip_a', [n, a?.label ?? ''])));
+        if (setup.snapped != null) chips.add(_snappedChip(context, setup.snapped!));
+      case ArSetupStep.cornerB:
+        if (setup.matchedB != null) {
+          chips.add(ArStatusBadge(
+            tone: ArBadgeTone.locked,
+            text: arTr(context, 'ar.corner.matched', [setup.matchedB!.label, _shape(context, setup.matchedB!.kind, setup.matchedB!.angleDeg)]),
+          ));
+        } else if (setup.snapped != null) {
+          chips.add(_snappedChip(context, setup.snapped!));
+        }
+      case ArSetupStep.boardLock:
+        final code = setup.lockingCode;
+        final label = code == null ? '' : (session.floor?.markerByCode(code)?.label ?? MarkerCode.display(code));
+        chips.add(ArGlassChip(text: arTr(context, 'ar.lock.locking_onto', [label])));
+      case ArSetupStep.boardScan:
+        chips.add(ArGlassChip(text: 'ar.board.point_at'.getString(context), icon: ArIcons.board));
+      default:
+        break;
+    }
+    if (session.tracking == 'limited' || session.tracking == 'initializing') {
+      chips.add(ArGlassChip(
+        text: session.tracking == 'initializing'
+            ? 'ar.tracking.initializing'.getString(context)
+            : 'ar.tracking.limited'.getString(context),
+        icon: ArIcons.info,
+        strong: true,
+      ));
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final c in chips) Padding(padding: const EdgeInsets.only(bottom: 8), child: Center(child: c)),
+      ],
+    );
+  }
+
+  Widget _snappedChip(BuildContext context, DetectedCorner d) => ArStatusBadge(
+    tone: ArBadgeTone.locked,
+    text: arTr(context, 'ar.corner.snapped', [_shape(context, d.kind, d.angleDeg)]),
+  );
+}
+
+/// "90° outside corner", "inside 90°", "column edge".
+String _shape(BuildContext context, String kind, double angleDeg) {
+  final deg = angleDeg.round();
+  return switch (kind) {
+    'inside' => arTr(context, 'ar.corner.shape_inside', [deg]),
+    'column' => arTr(context, 'ar.corner.shape_column', [deg]),
+    _ => arTr(context, 'ar.corner.shape_outside', [deg]),
+  };
+}
+
+class _GridRail extends ConsumerWidget {
+  const _GridRail({required this.visible});
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(color: FeArColors.glass, borderRadius: BorderRadius.circular(18)),
+      child: _RailTool(
+        icon: ArIcons.grid,
+        label: 'ar.tool.grid'.getString(context),
+        active: visible,
+        onTap: () => ref.read(arSessionProvider.notifier).setGridVisible(!visible),
+      ),
+    );
+  }
+}
+
+class _RailTool extends StatelessWidget {
+  const _RailTool({required this.icon, required this.label, required this.onTap, this.active = false});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active ? Colors.white : Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: SizedBox(
+          width: 64,
+          height: 58,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 22, color: active ? FeColors.ink : Colors.white),
+              const SizedBox(height: 3),
+              AppText.caption(label, color: active ? FeColors.ink : Colors.white, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BoardViewfinder extends StatelessWidget {
+  const _BoardViewfinder();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: SizedBox(
+        width: 190,
+        height: 230,
+        child: CustomPaint(painter: _BracketsPainter()),
+      ),
+    );
+  }
+}
+
+class _BracketsPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    const l = 26.0;
+    final w = size.width;
+    final h = size.height;
+    canvas.drawPath(Path()..moveTo(0, l)..lineTo(0, 0)..lineTo(l, 0), p);
+    canvas.drawPath(Path()..moveTo(w - l, 0)..lineTo(w, 0)..lineTo(w, l), p);
+    canvas.drawPath(Path()..moveTo(w, h - l)..lineTo(w, h)..lineTo(w - l, h), p);
+    canvas.drawPath(Path()..moveTo(l, h)..lineTo(0, h)..lineTo(0, h - l), p);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ------------------------------------------------------------------ cards
+
+/// M2: "Getting Level 3 ready" — the 15 m around the board first, the rest
+/// streams while the user aligns. Nobody waits for the whole floor.
+class _ReadyCard extends ConsumerWidget {
+  const _ReadyCard({required this.onStart});
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(arSessionProvider);
+    final d = s.download;
+    final floor = s.floor;
+    final firstBuild = (floor == null || floor.builds.isEmpty) ? null : floor.builds.first;
+    // A stopped download still lets the user start: whatever is on the
+    // phone renders, and the rest resumes when there's signal.
+    final ready = d.focusReady || d.done || (floor?.fromCache ?? false) || d.error != null;
+    final markers = floor?.activeMarkers.length ?? 0;
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 56,
+                height: 56,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: CircularProgressIndicator(
+                        value: d.totalBytes == 0 ? null : d.fraction,
+                        strokeWidth: 5,
+                        color: FeColors.primary,
+                        backgroundColor: FeColors.line,
+                      ),
+                    ),
+                    Icon(ready ? ArIcons.check : ArIcons.download, color: FeColors.primary),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AppText.titleMedium(arTr(context, 'ar.ready.title', [floor?.floorName ?? '']), weight: FontWeight.w800),
+                    if (firstBuild != null)
+                      AppText.bodySmall(
+                        arTr(context, 'ar.ready.build', [firstBuild.version ?? '-', floor?.buildingName ?? '']),
+                        color: FeColors.ink2,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _ReadyRow(
+            done: (d.focusReady && d.focusTotalBytes > 0) || (floor?.fromCache ?? false),
+            title: 'ar.ready.around'.getString(context),
+            trailing: arMegabytes(context, d.focusTotalBytes == 0 ? (floor?.focusBytes ?? 0) : d.focusTotalBytes),
+          ),
+          _ReadyRow(done: floor != null, title: 'ar.ready.markers'.getString(context), trailing: '$markers'),
+          _ReadyRow(
+            done: d.done,
+            title: arTr(context, 'ar.ready.rest', [floor?.floorName ?? '']),
+            trailing: d.done
+                ? arMegabytes(context, d.restBytes)
+                : arTr(context, 'ar.ready.streaming', [arMegabytes(context, d.restBytes)]),
+            busy: !d.done,
+          ),
+          if (d.error != null) ...[
+            const SizedBox(height: 8),
+            ArHintRow(text: d.error!.getString(context)),
+          ],
+          const SizedBox(height: 10),
+          AppText.bodySmall('ar.ready.note'.getString(context), color: FeColors.ink2),
+          const SizedBox(height: 14),
+          ArPrimaryButton(label: 'ar.ready.start'.getString(context), onPressed: ready ? onStart : null, icon: ArIcons.board),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadyRow extends StatelessWidget {
+  const _ReadyRow({required this.done, required this.title, required this.trailing, this.busy = false});
+  final bool done;
+  final String title;
+  final String trailing;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(color: done ? FeArColors.lockedBg : FeArColors.manualBg, shape: BoxShape.circle),
+            child: done
+                ? const Icon(ArIcons.check, size: 15, color: FeArColors.lockedIcon)
+                : (busy
+                      ? const Padding(
+                          padding: EdgeInsets.all(6),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: FeColors.primary),
+                        )
+                      : const SizedBox.shrink()),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: AppText.bodyMedium(title, weight: FontWeight.w600)),
+          AppText.bodySmall(trailing, color: FeColors.ink2),
+        ],
+      ),
+    );
+  }
+}
+
+/// S1: "Place the model" — no boards near, snap two corners; tap the one
+/// you're standing near on the mini plan.
+class _StartCard extends ConsumerWidget {
+  const _StartCard({required this.setup, required this.session, required this.plan, required this.tablet});
+  final ArSetupState setup;
+  final ArSessionState session;
+  final Widget plan;
+  final bool tablet;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    final a = setup.chosenA;
+    final n = a == null ? 1 : setup.ranked.indexOf(a) + 1;
+    final contextLine = _contextLine(context, session);
+    final hasBoards = (session.floor?.activeMarkers.length ?? 0) > 0;
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (contextLine != null) ...[
+            ArEyebrow(contextLine),
+            const SizedBox(height: 4),
+          ],
+          AppText.title('ar.start.title'.getString(context), weight: FontWeight.w800),
+          const SizedBox(height: 4),
+          AppText.bodyMedium(
+            (hasBoards ? 'ar.start.body_boards' : 'ar.start.body').getString(context),
+            color: FeColors.ink2,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(height: tablet ? 220 : 190, child: plan),
+          const SizedBox(height: 10),
+          if (a != null)
+            Row(
+              children: [
+                const Icon(ArIcons.pin, size: 16, color: FeColors.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: AppText.bodySmall(
+                    arTr(context, 'ar.start.chosen', [n, a.label]),
+                    weight: FontWeight.w700,
+                    color: FeColors.ink,
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 4),
+          AppText.bodySmall('ar.start.hint'.getString(context), color: FeColors.ink2),
+          const SizedBox(height: 14),
+          ArPrimaryButton(
+            label: arTr(context, 'ar.start.go', [n]),
+            icon: ArIcons.corner,
+            onPressed: a == null ? null : ctrl.startCornerA,
+          ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: hasBoards ? () => ctrl.chooseMethod(ArPlaceMethod.board) : ctrl.otherMethod,
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: AppText.label(
+              (hasBoards ? 'ar.start.scan_instead' : 'ar.common.other_method').getString(context),
+              color: FeColors.primary,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String? _contextLine(BuildContext context, ArSessionState s) {
+  final args = s.args;
+  if (args == null) return null;
+  final parts = <String>[
+    if (args.workOrderId != null) arTr(context, 'ar.start.for_work_order'),
+    if (s.target != null) s.target!.displayName,
+    ?args.spaceName,
+  ];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
+/// S2 / TabSnap / PhSnap: aim the pin at corner A.
+class _CornerACard extends ConsumerWidget {
+  const _CornerACard({required this.setup, required this.session, this.plan});
+  final ArSetupState setup;
+  final ArSessionState session;
+  final Widget? plan;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    final a = setup.chosenA;
+    final snapped = setup.snapped;
+    final lidarHidden = snapped != null && snapped.method == 'lidar';
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: AppText.titleMedium('ar.corner.one_of_two'.getString(context), weight: FontWeight.w800)),
+              const ArStepDots(count: 2, index: 0),
+            ],
+          ),
+          if (plan != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(height: 180, child: plan),
+          ],
+          const SizedBox(height: 10),
+          AppText.bodyMedium(
+            a == null ? 'ar.corner.aim'.getString(context) : arTr(context, 'ar.corner.aim_at', [a.label]),
+            color: FeColors.ink2,
+          ),
+          if (session.gridVisible && (session.floor?.gridLines.isNotEmpty ?? false)) ...[
+            const SizedBox(height: 6),
+            AppText.bodySmall('ar.corner.grid_hint'.getString(context), color: FeColors.ink2),
+          ],
+          if (snapped != null) ...[
+            const SizedBox(height: 10),
+            ArSuccessRow(text: arTr(context, 'ar.corner.snapped', [_shape(context, snapped.kind, snapped.angleDeg)])),
+            if (lidarHidden) ...[
+              const SizedBox(height: 6),
+              AppText.bodySmall('ar.corner.lidar_note'.getString(context), color: FeColors.ink2),
+            ],
+          ] else if (!session.demo) ...[
+            const SizedBox(height: 10),
+            ArHintRow(text: 'ar.corner.coach'.getString(context)),
+          ],
+          if (session.demo && snapped == null) ...[
+            const SizedBox(height: 8),
+            _DemoButton(label: 'ar.demo.snap'.getString(context), onTap: ctrl.demoSnap),
+          ],
+          const SizedBox(height: 14),
+          ArPrimaryButton(label: 'ar.corner.use'.getString(context), icon: ArIcons.check, onPressed: snapped == null ? null : ctrl.useCornerA),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: ctrl.otherMethod,
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: AppText.label('ar.common.other_method'.getString(context), color: FeColors.primary, weight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// S3: corner B, matched automatically. Suggests a good one; asks with two
+/// big buttons only when two candidates are equally close.
+class _CornerBCard extends ConsumerWidget {
+  const _CornerBCard({required this.setup, required this.session, this.plan});
+  final ArSetupState setup;
+  final ArSessionState session;
+  final Widget? plan;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    final a = session.floor?.corners.where((c) => c.id == setup.cornerAId).toList() ?? const <CornerCandidate>[];
+    final first = a.isEmpty ? null : a.first;
+    final suggestion = setup.suggestedB;
+    final matched = setup.matchedB;
+    final ambiguous = setup.ambiguousB;
+    final distance = (first != null && matched != null) ? first.posTile.distanceXzTo(matched.posTile) : null;
+    final suggestDist = (first != null && suggestion != null) ? first.posTile.distanceXzTo(suggestion.posTile) : null;
+
+    Widget body;
+    if (ambiguous.length >= 2) {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppText.titleMedium('ar.corner.which'.getString(context), weight: FontWeight.w800),
+          const SizedBox(height: 10),
+          for (final m in ambiguous.take(2)) ...[
+            ArPrimaryButton(
+              label: m.candidate.label,
+              color: FeColors.ink,
+              onPressed: () => ctrl.useCornerB(m.candidate),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+      );
+    } else if (matched != null) {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppText.titleMedium('ar.corner.b_found'.getString(context), weight: FontWeight.w800),
+          const SizedBox(height: 4),
+          AppText.bodyMedium(
+            distance == null
+                ? 'ar.corner.b_found_sub_plain'.getString(context)
+                : arTr(context, 'ar.corner.b_found_sub', [arMetres(context, distance)]),
+            color: FeColors.ink2,
+          ),
+          if (setup.tooCloseB) ...[
+            const SizedBox(height: 8),
+            ArHintRow(text: 'ar.corner.too_close'.getString(context)),
+          ],
+          const SizedBox(height: 14),
+          ArPrimaryButton(label: 'ar.corner.use'.getString(context), icon: ArIcons.check, onPressed: ctrl.useCornerB),
+        ],
+      );
+    } else {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: AppText.titleMedium('ar.corner.two_of_two'.getString(context), weight: FontWeight.w800)),
+              const ArStepDots(count: 2, index: 1),
+            ],
+          ),
+          const SizedBox(height: 6),
+          AppText.bodyMedium(
+            suggestion == null || suggestDist == null
+                ? 'ar.corner.b_any'.getString(context)
+                : arTr(context, 'ar.corner.b_suggest', [suggestion.label, arMetres(context, suggestDist)]),
+            color: FeColors.ink2,
+          ),
+          if (setup.noMatchB) ...[
+            const SizedBox(height: 8),
+            ArHintRow(text: 'ar.corner.no_match'.getString(context)),
+          ] else if (setup.tooCloseB) ...[
+            const SizedBox(height: 8),
+            ArHintRow(text: 'ar.corner.too_close'.getString(context)),
+          ],
+          if (session.demo) ...[
+            const SizedBox(height: 8),
+            _DemoButton(label: 'ar.demo.snap_b'.getString(context), onTap: ctrl.demoSnap),
+          ],
+        ],
+      );
+    }
+
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ArSessionBadge(),
+          ),
+          if (plan != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(height: 170, child: plan),
+          ],
+          const SizedBox(height: 12),
+          body,
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: ctrl.carryOn,
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: AppText.label('ar.corner.carry_on_amber'.getString(context), color: FeColors.primary, weight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pointing at a board, before the engine locks on.
+class _BoardScanCard extends ConsumerWidget {
+  const _BoardScanCard({required this.session});
+  final ArSessionState session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    final focus = session.args?.focusCode;
+    final focusLabel = focus == null ? null : session.floor?.markerByCode(focus)?.label;
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppText.titleMedium(
+            focusLabel == null ? 'ar.board.title'.getString(context) : arTr(context, 'ar.board.title_label', [focusLabel]),
+            weight: FontWeight.w800,
+          ),
+          const SizedBox(height: 4),
+          AppText.bodyMedium('ar.board.body'.getString(context), color: FeColors.ink2),
+          if (session.demo) ...[
+            const SizedBox(height: 10),
+            _DemoButton(label: 'ar.demo.scan_board'.getString(context), onTap: () => ctrl.demoScanBoard()),
+            const SizedBox(height: 6),
+            _DemoButton(label: 'ar.demo.scan_board_awkward'.getString(context), onTap: () => ctrl.demoScanBoard(awkward: true)),
+          ],
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: ctrl.otherMethod,
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: AppText.label('ar.common.other_method'.getString(context), color: FeColors.primary, weight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// M3: "Hold still", with coaching chips that turn green by themselves.
+class _BoardLockCard extends ConsumerWidget {
+  const _BoardLockCard({required this.setup});
+  final ArSetupState setup;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final m = setup.sighting;
+    final ctrl = ref.read(arSetupProvider.notifier);
+    final demo = ref.watch(arSessionProvider.select((s) => s.demo));
+    final chips = <Widget>[
+      _CoachChip(
+        ok: m?.distanceOk ?? true,
+        text: m == null
+            ? '—'
+            : (m.distanceOk
+                  ? arMetres(context, m.distanceM)
+                  : (m.distanceM > 2 ? 'ar.lock.closer'.getString(context) : 'ar.lock.back'.getString(context))),
+      ),
+      _CoachChip(ok: m?.squareOn ?? true, text: (m?.squareOn ?? true) ? 'ar.lock.square'.getString(context) : 'ar.lock.face_it'.getString(context)),
+      _CoachChip(ok: m?.steady ?? true, text: (m?.steady ?? true) ? 'ar.lock.steady'.getString(context) : 'ar.lock.hold'.getString(context)),
+    ];
+    final failing = m != null && !m.acceptable;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ArCameraTitle('ar.lock.hold_still'.getString(context)),
+        const SizedBox(height: 12),
+        Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: chips),
+        const SizedBox(height: 14),
+        AppText.bodySmall(
+          (failing ? 'ar.lock.fix_hint' : 'ar.lock.about_a_second').getString(context),
+          color: FeArColors.onGlassMuted,
+          align: TextAlign.center,
+        ),
+        if (failing) ...[
+          const SizedBox(height: 12),
+          ArOnCameraButton(
+            label: demo ? 'ar.demo.scan_board'.getString(context) : 'ar.lock.try_again'.getString(context),
+            icon: demo ? ArIcons.demo : ArIcons.board,
+            onPressed: demo ? () => ctrl.demoScanBoard() : ctrl.retryLock,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CoachChip extends StatelessWidget {
+  const _CoachChip({required this.ok, required this.text});
+  final bool ok;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => ArGlassChip(
+    text: text,
+    icon: ok ? ArIcons.check : ArIcons.warning,
+    iconColor: ok ? FeColors.success : FeColors.warning,
+  );
+}
+
+/// M4: amber with one board; a radar points at the next one.
+class _AlignedCard extends ConsumerWidget {
+  const _AlignedCard({required this.setup, required this.session});
+  final ArSetupState setup;
+  final ArSessionState session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    final next = setup.nextBoard;
+    final here = session.cameraTile ?? (session.observations.isEmpty ? null : session.observations.last.bTile);
+    double? bearing;
+    double? distance;
+    String? dirKey;
+    if (next != null && here != null) {
+      distance = here.distanceXzTo(next.posTile);
+      final fwd = session.forwardTileXz ?? _facingFromLastBoard(session);
+      if (fwd != null) {
+        final to = Vec2(next.posTile.x - here.x, next.posTile.z - here.z);
+        bearing = math.atan2(fwd.x * to.y - fwd.y * to.x, fwd.x * to.x + fwd.y * to.y);
+        final deg = bearing * 180 / math.pi;
+        dirKey = deg.abs() <= 45
+            ? 'ar.dir.ahead'
+            : deg.abs() >= 135
+            ? 'ar.dir.behind'
+            : (deg > 0 ? 'ar.dir.right' : 'ar.dir.left');
+      }
+    }
+    return ArCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              ArRadar(bearingRad: bearing),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AppText.titleMedium('ar.aligned.title'.getString(context), weight: FontWeight.w800),
+                    const SizedBox(height: 3),
+                    if (next != null)
+                      AppText.bodyMedium(
+                        distance == null
+                            ? arTr(context, 'ar.aligned.next_plain', [next.label])
+                            : arTr(context, 'ar.aligned.next', [
+                                next.label,
+                                arMetres(context, distance),
+                                (dirKey ?? 'ar.dir.nearby').getString(context),
+                                arTr(context, arWallKey(next.normalTile.x, next.normalTile.z)),
+                              ]),
+                        color: FeColors.ink2,
+                      )
+                    else
+                      AppText.bodyMedium('ar.aligned.no_next'.getString(context), color: FeColors.ink2),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          AppText.bodySmall('ar.aligned.why'.getString(context), color: FeColors.ink2),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              if (next != null) ...[
+                Expanded(
+                  flex: 13,
+                  child: ArPrimaryButton(
+                    label: arTr(context, 'ar.aligned.scan', [next.label]),
+                    onPressed: session.demo ? ctrl.demoScanBoard : ctrl.retryLock,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(flex: 10, child: ArSecondaryButton(label: 'ar.aligned.carry_on'.getString(context), onPressed: ctrl.goToWork)),
+            ],
+          ),
+          if (session.demo && next != null) ...[
+            const SizedBox(height: 6),
+            AppText.caption('ar.demo.scan_hint'.getString(context), color: FeColors.ink2, align: TextAlign.center),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Without a camera pose, assume the user faces the board they scanned.
+  Vec2? _facingFromLastBoard(ArSessionState s) {
+    for (final o in s.observations.reversed) {
+      if (o is MarkerObs) return Vec2(-o.normalTile.x, -o.normalTile.z).normalized;
+    }
+    return null;
+  }
+}
+
+/// S4: green. Offer "Make next time one scan" with the ghost outline.
+class _LockedCard extends ConsumerWidget {
+  const _LockedCard({required this.setup});
+  final ArSetupState setup;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    final hasGhost = setup.ghost != null;
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Align(alignment: AlignmentDirectional.centerStart, child: ArSessionBadge()),
+          const SizedBox(height: 12),
+          AppText.titleMedium((hasGhost ? 'ar.locked.leave_title' : 'ar.locked.title').getString(context), weight: FontWeight.w800),
+          const SizedBox(height: 4),
+          AppText.bodyMedium((hasGhost ? 'ar.locked.leave_body' : 'ar.locked.body').getString(context), color: FeColors.ink2),
+          const SizedBox(height: 14),
+          if (hasGhost)
+            Row(
+              children: [
+                Expanded(
+                  flex: 14,
+                  child: ArPrimaryButton(label: 'ar.locked.scan_spare'.getString(context), icon: ArIcons.board, onPressed: ctrl.leaveBoard),
+                ),
+                const SizedBox(width: 10),
+                Expanded(flex: 10, child: ArSecondaryButton(label: 'ar.common.not_now'.getString(context), onPressed: ctrl.notNow)),
+              ],
+            )
+          else
+            ArPrimaryButton(label: 'ar.locked.start_work'.getString(context), icon: ArIcons.next, onPressed: ctrl.goToWork),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: ctrl.startNudge,
+            style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            child: AppText.label('ar.locked.fine_tune'.getString(context), color: FeColors.primary, weight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The ghost is up; waiting for the spare to be scanned.
+class _LeaveBoardCard extends ConsumerWidget {
+  const _LeaveBoardCard({required this.session});
+  final ArSessionState session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppText.titleMedium('ar.leave.title'.getString(context), weight: FontWeight.w800),
+          const SizedBox(height: 4),
+          AppText.bodyMedium('ar.leave.body'.getString(context), color: FeColors.ink2),
+          const SizedBox(height: 10),
+          const _Step(n: 1, key: ValueKey('leave1')),
+          const _Step(n: 2, key: ValueKey('leave2')),
+          const _Step(n: 3, key: ValueKey('leave3')),
+          if (session.demo) ...[
+            const SizedBox(height: 8),
+            _DemoButton(label: 'ar.demo.scan_spare'.getString(context), onTap: ctrl.demoScanSpare),
+          ],
+          const SizedBox(height: 8),
+          ArSecondaryButton(label: 'ar.common.not_now'.getString(context), onPressed: ctrl.notNow),
+        ],
+      ),
+    );
+  }
+}
+
+class _Step extends StatelessWidget {
+  const _Step({super.key, required this.n});
+  final int n;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(color: FeColors.infoSoft, shape: BoxShape.circle),
+            child: AppText.caption('$n', color: FeColors.primary, weight: FontWeight.w800),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: AppText.bodySmall('ar.leave.step$n'.getString(context), color: FeColors.ink)),
+        ],
+      ),
+    );
+  }
+}
+
+/// S5: the guided single-axis nudge, 5 mm per tap.
+class _NudgeCard extends ConsumerWidget {
+  const _NudgeCard({required this.session});
+  final ArSessionState session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Align(alignment: AlignmentDirectional.centerStart, child: ArSessionBadge()),
+          const SizedBox(height: 12),
+          AppText.titleMedium('ar.nudge.title'.getString(context), weight: FontWeight.w800),
+          const SizedBox(height: 4),
+          AppText.bodyMedium('ar.nudge.body'.getString(context), color: FeColors.ink2),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _NudgeButton(icon: ArIcons.minus, label: 'ar.nudge.away'.getString(context), onTap: () => ctrl.nudge(-1)),
+              Expanded(
+                child: Column(
+                  children: [
+                    AppText.headlineSmall(arSignedCentimetres(context, session.nudgeM), weight: FontWeight.w800),
+                    AppText.caption('ar.nudge.step'.getString(context), color: FeColors.ink2),
+                  ],
+                ),
+              ),
+              _NudgeButton(icon: ArIcons.plus, label: 'ar.nudge.toward'.getString(context), onTap: () => ctrl.nudge(1)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: ArSecondaryButton(label: 'ar.nudge.reset'.getString(context), onPressed: session.nudgeM == 0 ? null : ctrl.resetNudge)),
+              const SizedBox(width: 10),
+              Expanded(flex: 2, child: ArPrimaryButton(label: 'ar.common.done'.getString(context), onPressed: ctrl.doneNudge)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NudgeButton extends StatelessWidget {
+  const _NudgeButton({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: FeArColors.manualBg,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () {
+            ArHaptics.snap();
+            onTap();
+          },
+          child: SizedBox(width: 64, height: 64, child: Icon(icon, size: 26, color: FeColors.ink)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Red: the observations disagree by more than 5 cm.
+class _MismatchCard extends ConsumerWidget {
+  const _MismatchCard({required this.session});
+  final ArSessionState session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    return ArCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Align(alignment: AlignmentDirectional.centerStart, child: ArSessionBadge()),
+          const SizedBox(height: 12),
+          AppText.titleMedium('ar.mismatch.title'.getString(context), weight: FontWeight.w800),
+          const SizedBox(height: 4),
+          AppText.bodyMedium('ar.mismatch.body'.getString(context), color: FeColors.ink2),
+          const SizedBox(height: 14),
+          ArPrimaryButton(label: 'ar.mismatch.resnap'.getString(context), icon: ArIcons.realign, onPressed: () => ctrl.reAlign()),
+          const SizedBox(height: 8),
+          ArSecondaryButton(label: 'ar.mismatch.carry_on'.getString(context), onPressed: ctrl.goToWork),
+        ],
+      ),
+    );
+  }
+}
+
+/// "This board is on Level 4" — switch floors or stay.
+class _OtherFloorPrompt extends ConsumerWidget {
+  const _OtherFloorPrompt({required this.setup});
+  final ArSetupState setup;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ctrl = ref.read(arSetupProvider.notifier);
+    return ColoredBox(
+      color: Colors.black45,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: ArCard(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AppText.titleMedium(arTr(context, 'ar.other_floor.title', [setup.otherFloorName ?? '']), weight: FontWeight.w800),
+                  const SizedBox(height: 4),
+                  AppText.bodyMedium('ar.other_floor.body'.getString(context), color: FeColors.ink2),
+                  const SizedBox(height: 14),
+                  ArPrimaryButton(
+                    label: arTr(context, 'ar.other_floor.switch', [setup.otherFloorName ?? '']),
+                    onPressed: () => context.pushReplacement(Routes.arMarker(setup.otherFloorCode!)),
+                  ),
+                  const SizedBox(height: 8),
+                  ArSecondaryButton(label: 'ar.other_floor.stay'.getString(context), onPressed: ctrl.dismissOtherFloor),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DemoButton extends StatelessWidget {
+  const _DemoButton({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        foregroundColor: FeArColors.placedFg,
+        side: const BorderSide(color: FeColors.warning, width: 1.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      icon: const Icon(ArIcons.demo, size: 16),
+      label: AppText.label(label, color: FeArColors.placedFg, weight: FontWeight.w700),
+    );
+  }
+}

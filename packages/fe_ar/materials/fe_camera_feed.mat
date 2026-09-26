@@ -1,0 +1,56 @@
+// fe_camera_feed: the ARKit camera image as a full-screen triangle behind the
+// model (iOS only; on Android SceneView draws the ARCore camera stream).
+//
+// Adapted from google/filament ios/samples/hello-ar/Materials/camera_feed.mat
+// (Apache-2.0). Differences:
+//  - the view uses a LINEAR tone mapper (FeArRenderer.mm) so overlay colours
+//    come out exactly as Dart asked for them; the camera image is therefore
+//    decoded from sRGB to linear exactly here, instead of hello-ar's
+//    inverseTonemapSRGB(), which inverts the default filmic curve;
+//  - depth is neither tested nor written, and the renderable has priority 0,
+//    so the feed is always behind the model regardless of the depth convention.
+//
+// The texture is an external image (Texture::Sampler::SAMPLER_EXTERNAL fed
+// with the frame's CVPixelBuffer); Filament's Metal backend converts ARKit's
+// YCbCr 4:2:0 buffer to RGB. textureTransform is the inverse of ARKit's
+// displayTransform(for:viewportSize:), which rotates and crops the sensor
+// image to the view.
+//
+// Compile: matc --api all --platform mobile -o fe_camera_feed.filamat fe_camera_feed.mat
+material {
+    name : fe_camera_feed,
+    shadingModel : unlit,
+    vertexDomain : device,
+    depthWrite : false,
+    depthCulling : false,
+    requires : [
+        uv0
+    ],
+    flipUV : false,
+    parameters : [
+        {
+            type : sampler2d,
+            name : cameraFeed
+        },
+        {
+            type : float3x3,
+            name : textureTransform
+        }
+    ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.uv0 = (materialParams.textureTransform * float3(material.uv0, 1.0)).rg;
+    }
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        float3 c = texture(materialParams_cameraFeed, getUV0()).rgb;
+        float3 lo = c / 12.92;
+        float3 hi = pow((c + 0.055) / 1.055, float3(2.4));
+        material.baseColor = float4(mix(lo, hi, step(float3(0.04045), c)), 1.0);
+    }
+}

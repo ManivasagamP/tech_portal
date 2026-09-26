@@ -39,6 +39,15 @@ String? routeForNotification(AppNotification notification) {
   // Snag Assistant — the server also sends `/technician/snags/<id>` as the
   // link, which the branch above already maps; this covers a link-less one.
   if (entityType == 'Snag') return Routes.snagDetail(entityId);
+  // AR install requests send the link `/technician/ar/install?floorId=<id>`,
+  // which the prefix strip above maps onto [Routes.arInstall] as it is; a
+  // link-less one names the floor as its entity. The server stamps
+  // `ar_install_request` (installRequestService.ts INSTALL_REQUEST_ENTITY);
+  // the PascalCase spelling is kept in case it is ever normalised. Keep in
+  // step with `_routeForPushData` in push_service.dart.
+  if (entityType == 'ar_install_request' || entityType == 'ArInstallRequest') {
+    return Routes.arInstall(floorId: entityId);
+  }
 
   final slug = _slugForEntityType(entityType);
   return slug == null ? null : Routes.orderDetail(slug, entityId);

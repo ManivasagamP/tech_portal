@@ -22,9 +22,78 @@ Work this repo still owes: unfinished, partly done, blocked, or built but never 
 - **Next step:** <the first concrete action>
 -->
 
-Next number: **P-004**
+Next number: **P-011**
 
 ## Open
+
+### P-004 · AR (FieldOps): never analyzed or tested on Flutter ≥ 3.44, never run on a device
+- **Status:** needs verification · **Priority:** P2 · **Area:** AR (`lib/core/ar`, `lib/state/ar_*`, `lib/features/ar`, `lib/data/ar_repository.dart`, OfflineDb v10)
+- **Found:** 2026-09-26 (AR v1 build + fieldops-verify)
+- **Done so far:** type check of all of `lib/` and `test/ar_*` on the Flutter **3.19** analyzer over a scratch copy, clean apart from known old-toolchain noise; 193 pure-Dart AR tests pass on Dart 3.3.1 (LEARNINGS → Platform, "No-download type check"); i18n script shows 528 `ar.*` keys in both files; channel keys cross-read against Kotlin/Swift. See [docs/ar-implementation.md §9](docs/ar-implementation.md#9-verification-status-be-honest).
+- **Left:** `flutter pub get --enforce-lockfile`, `flutter analyze`, `flutter test test/ar_*_test.dart` on ≥ 3.44 (the `ChannelArEngine` group has never run); v9 → v10 migration on a device with a populated DB; Demo mode walked at runtime on a phone (360 px) and a tablet (≥ 900 px), in EN and AR (RTL rails); `LiveArGateway` → `ArRepository` against a server (ETag/304, tile bytes, auth on the raw Dio client, queued replays).
+- **Why deferred:** no Flutter ≥ 3.44, device or emulator on this Mac this session; downloads were not allowed.
+- **Where:** [docs/ar-implementation.md](docs/ar-implementation.md)
+- **Next step:** bootstrap the slim 3.47.5 SDK (LEARNINGS → Platform) and run the three commands; fix what flutter_lints 6 reports.
+
+### P-005 · `packages/fe_ar` native plugin: slice 0 (build it on devices)
+- **Status:** not started · **Priority:** P2 · **Area:** AR native (`packages/fe_ar`)
+- **Found:** 2026-09-26 (fe_ar build)
+- **Done so far:** Kotlin, Swift, ObjC++ and a shared C99 core written; the C core passes 131 checks under ASan/UBSan; Swift type-checked against stubs; ObjC++ syntax-checked against Filament 1.72.1 headers. Not a dependency of the app.
+- **Left:** build on Android and iOS devices and resolve the 11 `TODO(slice-0)` markers (README "Slice 0 checklist"); compile `materials/*.mat` with matc 1.72.1 and commit the `.filamat` outputs; add the path dependency; `compileSdk`/`minSdk`/Kotlin-compose alignment; extend `NSCameraUsageDescription`; revisit the portrait lock for tablet AR.
+- **Why deferred:** no Android SDK, Xcode build, kotlinc or matc on this Mac; AR-2/AR-3/AR-37 need real devices.
+- **Where:** [packages/fe_ar/README.md](packages/fe_ar/README.md), [CHANNEL.md](packages/fe_ar/CHANNEL.md)
+- **Next step:** slice-0 checklist item 1 (SceneView in a Flutter platform view) on the reference Android device.
+
+### P-006 · AR hand-offs don't carry the AR context into Verify and Snags
+- **Status:** not started · **Priority:** P2 · **Area:** AR ↔ field verification / Snag Assistant
+- **Found:** 2026-09-26 (fieldops-ui)
+- **Done so far:** the Verify mode sends `ar*` query params (`arCheck`, `arOffsetM`, `arToleranceM`, `arTagMatches`, `arBuildId`, `arGlobalId`, `arFeatureId`, `arFitMethod`, `arMaxResidualMm`, `arQuality`, `arMapping`, `arPhoto`) to `/verify/:assetId`; the Snags mode opens `Routes.snagNew` with asset, floor, building and work order.
+- **Left:** the `/verify` route builder and `FieldVerificationScreen` must read those params and submit them as `arContext` (docs/ar-bim-overlay.md §8); `Routes.snagNew`/`SnagRaiseScreen` should accept the element GlobalId, the AR capture photo path and the camera pose (AR-47).
+- **Why deferred:** those screens were outside the AR build's file ownership.
+- **Where:** [ar_mode_panel.dart](lib/features/ar/workspace/ar_mode_panel.dart), [router.dart](lib/app/router.dart) `/verify/:assetId`, `lib/features/field_verification/field_verification_screen.dart`
+- **Next step:** parse the `ar*` params in the `/verify` builder and pre-fill the form's location check.
+
+### P-007 · AR entry points are not gated by `isArView` / `isArInstall`
+- **Status:** not started · **Priority:** P2 · **Area:** AR / permissions
+- **Found:** 2026-09-26 (fieldops-ui)
+- **Done so far:** the server's settings schema has `isArView` (default **on**) and `isArInstall` (default **off**) (`../fusion-eco-server/src/common/redis.ts`). The app reads neither.
+- **Left:** add both to `Permissions` (`session_store.dart`, `auth_repository.fetchPermissions`); hide `ArDashboardCard` and "Show in AR" when `isArView == false`; gate the install list, the dashboard install tile and spare binding on `isArInstall` (ar-markers-and-qr.md §3.3 open decision 3). Check `GET /api/auth/config` actually returns them.
+- **Why deferred:** `session_store.dart` wasn't in the AR build's ownership.
+- **Where:** [ar_entry_widgets.dart](lib/features/ar/widgets/ar_entry_widgets.dart), `lib/core/storage/session_store.dart`
+- **Next step:** confirm the auth-config payload, then add the two flags like `isDigitalTwin`.
+
+### P-008 · AR offline gaps: spares, queued four-eyes rejections, tile GC, building name, ghost-spot clearance
+- **Status:** partial · **Priority:** P1 for (2), P2 for the rest · **Area:** AR data (`ar_repository.dart`, `ar_gateway_live.dart`)
+- **Found:** 2026-09-26 (fieldops-core, fieldops-ui)
+- **Done so far:** local-first resolve, ETag manifests, verified tile store, queued writes with rollback on online rejection.
+- **Left:**
+  - (1) the manifest carries no spare codes (C5 `ManifestMarker` excludes spares), so a spare scanned offline and outside a locked session resolves as `NEEDS_SIGNAL`; either add the building's spare codes to the manifest (server) or keep treating a valid unknown code as "New board" while locked.
+  - (2) a queued `setProgress` replays inside a 200 whose `rejected[]` (four-eyes) the phone never sees. The local row shows the refused status (e.g. "verified") until the next `fetchProgress` after the queue drains, which then lets the server copy win. Call `fetchProgress` when the queue flushes an `ArProgress` entity, and tell the user what was refused.
+  - (3) `gcTiles` (1 GB cap) is never triggered; call it after downloads or from a storage screen.
+  - (4) no `ArRepository.buildingName(buildingId)`, so the install-list eyebrow and M2 subtitle can be blank before a board resolve.
+  - (5) the live `GhostSpotFinder` call gets no `FloorPlan`, so door and equipment clearance isn't applied.
+- **Why deferred:** contract gaps found while building in parallel.
+- **Where:** [ar_repository.dart](lib/data/ar_repository.dart), [ar_gateway_live.dart](lib/state/ar_gateway_live.dart)
+- **Next step:** (2) first: it can show a technician a "verified" the server refused.
+
+### P-009 · AR tests owed, and one sample dataset for Demo mode
+- **Status:** not started · **Priority:** P3 · **Area:** AR tests
+- **Found:** 2026-09-26 (fieldops-ui, fieldops-verify)
+- **Done so far:** 13 pure test files for `lib/core/ar`, the models and the repository.
+- **Left:** tests for `ArSetupController` (corner A/B match, ambiguity, too close, board lock, register), `ArWorkspaceController` (four-eyes blockers, lasso sampling, **per-build feature state**, measure), `ArInstallController`, `DemoArGateway`/`LiveArGateway` mapping (fake `ArRepository` via `withSeams`), widget smoke tests of every AR route at 360 px and ≥ 900 px in EN and AR. Merge `ArDemoScenario` (core) and `DemoArGateway` (UI) into one sample floor so the fake's scripted story and the screens agree.
+- **Why deferred:** no Flutter ≥ 3.44 to run widget tests.
+- **Where:** `test/`, [fake_ar_engine.dart](lib/core/ar/fake_ar_engine.dart), [ar_demo_gateway.dart](lib/state/ar_demo_gateway.dart)
+- **Next step:** controller tests with `FakeArEngine` + `DemoArGateway` (both pure).
+
+### P-010 · AR extras not wired yet
+- **Status:** not started · **Priority:** P3 · **Area:** AR UX
+- **Found:** 2026-09-26 (fieldops-ui, fe_ar)
+- **Done so far:** shown disabled with "Coming in a later update" where they appear in the UI.
+- **Left:** torch (needs `setTorch` in C8 + fe_ar); a batched `pickMany` for lasso (today up to ~120 sequential `pick` calls); `startSession({progressEvents: true})` + `markerProgress` events to drive the M3 lock ring from real samples; `projectTile` for Flutter-drawn pin labels and grid bubbles; Android App Links / iOS universal links for `/m/<code>` so a phone-camera scan opens the app instead of the web landing; Save view (AR-61) and Share view (AR-52); a Phase filter (needs phase data).
+- **Why deferred:** outside v1 scope or needing a contract change.
+- **Where:** [ar_menu_panel.dart](lib/features/ar/workspace/ar_menu_panel.dart), [ar_session_controller.dart](lib/state/ar_session_controller.dart), [CHANNEL.md](packages/fe_ar/CHANNEL.md)
+- **Next step:** `progressEvents` (no contract change: fe_ar already emits it).
+
 
 ### P-003 · Three existing tests fail on unmodified HEAD
 - **Status:** not started · **Priority:** P3 · **Area:** tests

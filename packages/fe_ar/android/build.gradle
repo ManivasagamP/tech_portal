@@ -1,0 +1,99 @@
+// fe_ar Android: SceneView (ARCore + Filament), ML Kit barcode, and the
+// shared C core (../src) over JNI.
+//
+// This file is only ever built as a subproject of the FieldOps app, whose
+// android/settings.gradle.kts already puts the Android Gradle Plugin (9.1)
+// and Kotlin (2.4.0) on the classpath: they are applied here without
+// versions. The Compose compiler plugin is not on the app's classpath, so it
+// comes in with its version, which MUST equal the app's Kotlin version.
+plugins {
+    id "com.android.library"
+    id "org.jetbrains.kotlin.android"
+    id "org.jetbrains.kotlin.plugin.compose" version "2.4.0"
+}
+
+group = "com.fusionapps.fe_ar"
+version = "0.1.0"
+
+// Pinned together. SceneView 4.39.0 is built on Filament 1.72.1 and ARCore
+// 1.54.0; the Filament version is also what matc must match for
+// materials/*.mat (tool/compile_materials.sh) and what the iOS pod pins.
+ext {
+    feArSceneViewVersion = "4.39.0"
+    feArFilamentVersion = "1.72.1"
+}
+
+android {
+    namespace "com.fusionapps.fe_ar"
+    // SceneView 4.34+ compiles against API 37; the app needs compileSdk 37
+    // too if the AAR metadata check asks for it (README, "Enabling").
+    compileSdk 37
+
+    defaultConfig {
+        minSdk 24
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+    }
+
+    buildFeatures {
+        compose true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+dependencies {
+    implementation "io.github.sceneview:arsceneview:${feArSceneViewVersion}"
+    // Bundled model: works offline and without Play Services' ML module download.
+    implementation "com.google.mlkit:barcode-scanning:17.3.0"
+
+    // Compose hosts SceneView 4.x's ARSceneView inside the platform view.
+    implementation platform("androidx.compose:compose-bom:2026.09.00")
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.compose.runtime:runtime"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0"
+    implementation "androidx.savedstate:savedstate-ktx:1.3.0"
+}
+
+// ---- Filament material (optional build step) ------------------------------
+// The usual route is tool/compile_materials.sh, which writes
+// src/main/assets/fe_ar/fe_feature.filamat for both platforms. For CI, pass
+// the matc of the SAME Filament version (feArFilamentVersion) and the
+// material is compiled into a generated assets folder on every build:
+//   flutter build apk -PfeArMatc=/path/to/matc     (or FE_AR_MATC=/path/to/matc)
+// Without it, and without a checked-in .filamat, tiles fall back to gltfio's
+// stock material tinted per layer (no feature state, no section plane).
+def feArMatc = project.findProperty("feArMatc") ?: System.getenv("FE_AR_MATC")
+if (feArMatc) {
+    def generatedAssets = layout.buildDirectory.dir("generated/fe_ar/assets")
+    def compileFeArMaterial = tasks.register("compileFeArMaterial", Exec) {
+        def src = file("../materials/fe_feature.mat")
+        def out = generatedAssets.get().file("fe_ar/fe_feature.filamat").asFile
+        inputs.file(src)
+        outputs.file(out)
+        doFirst { out.parentFile.mkdirs() }
+        commandLine feArMatc, "--api", "all", "--platform", "mobile", "-o", out.absolutePath, src.absolutePath
+    }
+    android.sourceSets.main.assets.srcDirs += generatedAssets.get().asFile
+    tasks.named("preBuild").configure { dependsOn(compileFeArMaterial) }
+}

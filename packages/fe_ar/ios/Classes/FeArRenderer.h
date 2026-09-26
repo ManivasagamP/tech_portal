@@ -1,0 +1,76 @@
+// FeArRenderer: Filament (Metal) for fe_ar on iPhone and iPad.
+//
+// Pure Objective-C interface over an Objective-C++ implementation, so the
+// Swift half never sees C++ (Filament's API is C++). Structure follows
+// google/filament ios/samples/hello-ar (Apache-2.0): Metal swap chain on a
+// CAMetalLayer, the ARKit camera image as an external texture on a
+// full-screen triangle, ARKit's projection as a custom projection.
+//
+// It draws exactly what Android draws, from the same tiles and the same
+// compiled material (materials/fe_feature.mat): three gltfio instances per
+// tile for the solid, ghost and x-ray passes, a per-tile feature-state
+// texture, the overlay GLB, and nothing else. Main thread only.
+#import <CoreVideo/CoreVideo.h>
+#import <Foundation/Foundation.h>
+#import <QuartzCore/CAMetalLayer.h>
+#import <UIKit/UIKit.h>
+#import <simd/simd.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+@interface FeArRenderer : NSObject
+
+/// nil when Filament can't start (no Metal device, e.g. the simulator).
+- (nullable instancetype)initWithLayer:(CAMetalLayer*)layer;
+
+/// fe_feature.filamat was bundled: feature state, section and x-ray work.
+/// NO = gltfio's own material tinted per layer (the documented fallback).
+@property(nonatomic, readonly) BOOL hasFeatureMaterial;
+
+/// fe_camera_feed.filamat was bundled and Filament draws the camera image.
+/// NO = the Filament layer is transparent and the view draws the camera
+/// underneath with Core Image (slower, but never a black screen).
+@property(nonatomic, readonly) BOOL drawsCamera;
+
+/// One frame. projection and cameraModel (camera-to-world) must come from
+/// the same ARKit orientation and viewport as the displayed image.
+- (void)renderFrame:(nullable CVPixelBufferRef)cameraImage
+    textureTransform:(simd_float3x3)textureTransform
+          projection:(simd_float4x4)projection
+         cameraModel:(simd_float4x4)cameraModel
+        drawableSize:(CGSize)drawableSize
+             seconds:(double)seconds;
+
+- (BOOL)hasTile:(NSString*)hash;
+/// Uploads a tile GLB (tile frame, CONTRACT C7) under the model root.
+- (BOOL)addTile:(NSString*)hash data:(NSData*)glb layer:(NSString*)layer;
+- (void)removeTile:(NSString*)hash;
+
+/// Uploads the tile's gathered feature state (RGBA8, 256 texels a row,
+/// indexed by local feature index) when `version` changed, and switches
+/// each pass on only if the tile has features in that mode.
+- (void)syncTile:(NSString*)hash
+           state:(nullable NSData*)rgba
+     stateHeight:(NSInteger)height
+         version:(NSInteger)version
+          normal:(NSInteger)normal
+           ghost:(NSInteger)ghost
+       highlight:(NSInteger)highlight
+    layerVisible:(BOOL)layerVisible;
+
+/// The (eased) arFromTile transform every tile hangs from.
+- (void)setModelMatrix:(simd_float4x4)matrix;
+
+/// Global opacity and the section plane (tile-frame Y, or nil for none).
+- (void)setOpacity:(float)opacity sectionY:(nullable NSNumber*)sectionY;
+
+- (void)setGridGlb:(nullable NSData*)glb visible:(BOOL)visible;
+- (void)setPinsGlb:(nullable NSData*)glb;
+
+/// Reads back the next rendered frame (model, plus camera when
+/// drawsCamera). The completion runs on the main thread.
+- (void)captureNextFrame:(void (^)(UIImage* _Nullable image))completion;
+
+@end
+
+NS_ASSUME_NONNULL_END

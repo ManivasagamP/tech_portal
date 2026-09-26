@@ -256,8 +256,17 @@ Entries marked **Source:** were carried over on 2026-09-25 from `fusion-eco-serv
 **What to watch:** extract selectively. Keeping the zip and doing a full unzip together filled the disk. macOS has no `timeout` command; use the tool's own timeout, and never run two `flutter test` processes at once, because they fight over the startup lock and both appear hung. It is session-only: the scratchpad is wiped afterwards.
 **State:** results obtained this way count as real Flutter ≥ 3.44 runs for the CLAUDE.md verification rule.
 
+### No-download type check and pure tests when even the slim SDK can't be fetched (2026-09-26)
+**What happened:** the AR build ran under a no-downloads, no-installs rule (about 4 GB free), so the slim 3.47.5 recipe above was off the table. Three agents still needed their Dart checked.
+**Fix:** two scratch-only harnesses, both offline:
+1. **Type check of all of `lib/` and `test/`** with the installed Flutter 3.19.3 analyzer. Put a copy of `lib/` and the tests in a scratch package named `technician_portal`. Use the real `flutter_riverpod` 2.6.1, `go_router` 14.6.2, `dio` 5.9.0 and `uuid` 4.5.1 (all already in `~/.pub-cache`) and `flutter pub get --offline`. Every other plugin gets a path stub. `flutter_localization` 0.4.x needs Dart ≥ 3.5, so stub `getString`. Generate a `LucideIcons` stub from the locked 3.1.17 icon list. Stub `flutter_test` as `export 'package:test/test.dart'` plus `TestWidgetsFlutterBinding` and `TestDefaultBinaryMessengerBinding`, with the real signatures. Rewrite Dart 3.8 null-aware elements (`?x`, `'k': ?x`, inline `[a, ?b]`) to `if ((x) != null) (x)!` with a bracket-aware scanner. A line regex misses the inline forms. Then filter out the known noise: `Color.withValues`, `Switch.activeThumbColor`, duplicate wildcard `_` params (Dart 3.7), and the rewrite's own `unnecessary_non_null_assertion`.
+2. **Pure tests** with the Dart 3.3.1 in `/Users/kavin/flutterr/flutter/bin/cache/dart-sdk`: swap `flutter_test` for `package:test` 1.24.9 and strip the groups that need a Flutter binding.
+It caught real bugs: a missing method, unused imports, and an `unnecessary_import` of `dart:typed_data` (Flutter's `services.dart` re-exports `Uint8List`).
+**What to watch:** this is **not** a Flutter ≥ 3.44 run. It checks types and pure logic only: no widget tests, no flutter_lints 6 rules, Dart 3.3 language. Report it as "type check on 3.19" and keep the PENDING item open until a real run.
+**Where:** session scratchpad `fvcheck/run.sh`, `fvcheck/downgrade2.py`, `fieldops-core/dartcheck/sync.sh` (wiped with the session).
 
-## AR BIM overlay (planned, not built)
+
+## AR BIM overlay (v1 built 2026-09-26; not yet run on a device)
 
 Full plan: [docs/ar-bim-overlay.md](docs/ar-bim-overlay.md). These are the findings from the 2026-09-25 design pass that would otherwise have to be rediscovered.
 
@@ -311,6 +320,56 @@ Full plan: [docs/ar-bim-overlay.md](docs/ar-bim-overlay.md). These are the findi
 ### iPad support rules out WebXR; AR is native, with Filament on both platforms (2026-09-25, decision)
 **What happened:** the user made iPhone and iPad first-class targets for a product with no licences. Researched in September 2026: Chrome on Android has full WebXR AR (hit-test, anchors, depth, DOM overlay, raw camera access since Chrome 107), but **Safari on iPhone and iPad has no `immersive-ar`** and no public timeline, and **Android WebView has no WebXR** either, so a web page can't do AR inside FieldOps. RealityKit loads **only USDZ, not glTF** (GLTFKit2, MIT, converts), so it would need a second material and a second tile path. **Decision:** ARCore and ARKit for tracking, **Filament for rendering on both** (Android through SceneView, which is actively released; Sceneform was archived in March 2026; iOS follows Google's official `ios/samples/hello-ar`). RealityKit + GLTFKit2 is the iOS fallback if AR-37 fails. **What to watch:** FieldOps doesn't launch on iOS yet (Track I). LiDAR iPads get the best hit-tests on plain walls.
 **Where:** [docs/ar-bim-overlay.md §0, §2.4, §11](docs/ar-bim-overlay.md)
+
+### Marker QR: an upper-case short URL keeps it at version 2, and A4 can't hold a 200 mm QR (2026-09-26)
+**What happened:** designing the printed marker board showed two sizing errors in the earlier AR plan. (1) A4 portrait is 210 mm wide, so a 200 mm QR plus a textured frame can't fit. The real A4 board is a **115 mm QR inside a 170 mm frame**; A3 takes 170 mm. (2) The payload decides the module count. At error-correction level M, a version 2 QR (25 × 25) holds 38 characters in **alphanumeric** mode but only 26 in byte mode. An **upper-case** URL (`HTTPS://<HOST>/M/7K3QX9-M`) stays alphanumeric, which gives 4.6 mm modules at 115 mm, readable from about 2 m. **What to watch:** keep the printed host to 19 characters or fewer. Match `/M/<code>` without regard to case on the server. Keep the check character inside the base32 alphabet (Crockford's own check symbols `~` and `=` aren't QR-alphanumeric). Choose the host before the first print run; boards last for years.
+**Where:** [docs/ar-markers-and-qr.md §2](docs/ar-markers-and-qr.md)
+
+### Store marker poses in project coordinates; FusionEco floors already solve federated levels (2026-09-26)
+**What happened:** a marker pose stored in tile coordinates would break on every new model build, because re-centring and tiling can change. **Rule:** store the pose in project (IFC world) coordinates, derive the tile-frame pose for each build, and flag a marker `needs-review` only when its host wall or column actually moved. Separately, the "which level is this" problem across architectural and MEP IFCs is **already solved**: `bim_spaces` matches storeys and spaces to FusionEco `floorId` / `spaceId` (`../fusion-eco-server/src/model/bim-space.ts:30`). Key markers, manifests and route scopes on `floorId`, not on storey GlobalIds, which differ between models of the same building.
+**Where:** [docs/ar-markers-and-qr.md §3](docs/ar-markers-and-qr.md)
+
+### GAMMA's QR codes are registered after a corner alignment, not planned in the office (2026-09-26)
+**What happened:** the AR plan assumed, as GAMMA was first described, that alignment starts from QR markers planned on the model and installed before anyone scans. GAMMA's own help centre, blog and FAQ say otherwise. The primary method is **corner alignment**: a pin that auto-snaps to real wall and column corners and edges, with LiDAR finding hidden corners. A QR code is "registered" **after** a successful corner or gridline alignment, as a sticker whose position is captured on site. **Fix adopted:** markerless-first. Snap two corners (one corner already gives position and heading), then "leave a board": a spare board bound to the current fit. Office-planned networks become optional. **What to watch:** don't make preparation a precondition for a first AR session; that's the friction GAMMA avoided. Prefer structural corners (columns, load-bearing and external walls), because drywall moves in fit-outs. Take height from the floor plane plus a per-floor finish offset, never a manual vertical nudge.
+**Where:** [docs/ar-setup-and-gamma-parity.md §1–2](docs/ar-setup-and-gamma-parity.md)
+
+### Feature ids are dense per build: every feature-state texture and target must name its build (2026-09-26)
+**What happened:** the first workspace sent one feature-state texture and `setTarget(ids)` with no build. With architecture and MEP both loaded, id 12 is a wall in one build and a pipe in the other. `fe_ar` applies an unscoped texture to every build without one of its own, so switching pipes off hid architecture element 12 too. The target's off-screen arrow also pointed at the union of both builds' boxes. The native side already accepted `buildId`; C8 had never named it.
+**Fix:** `ArEngine.setFeatureState(rgba, width, {buildId})` and `setTarget(ids, {buildId})` were added (additive, and `ChannelArEngine` sends the key only when it is set). The workspace pushes **one texture per build**. The Layers panel's SHOW switches (pipes, ducts, trays, equipment) now skip architecture and structure elements, because per-build textures would otherwise hide every wall when "Equipment" is off.
+**What to watch:** anything keyed by `featureId` alone (pick results, snag pins, selections, progress colours) must carry `buildId`. Compare `(buildId, featureId)` pairs, never ids.
+**Where:** [ar_engine.dart](lib/core/ar/ar_engine.dart), [ar_workspace_controller.dart](lib/state/ar_workspace_controller.dart) `_pushFeatureState`, [CHANNEL.md](packages/fe_ar/CHANNEL.md)
+
+### A corner's face normals must be turned toward the camera before pairing (2026-09-26)
+**What happened:** a detector normal that points into the wall gives a heading that is self-consistent but **exactly 90° off**. Tested: 120° instead of 30°. A check that the two faces' headings agree can't catch it. The Demo engine hit the same bug when its scripted camera wandered to the far side of a corner.
+**Fix:** `CornerMatcher.firstCorner`/`observe` orient both detected normals toward `cameraAr` (the last `CameraPoseEvent` position) and only then pick the face pairing. Every corner snap passes `cameraAr`, and the demo camera stands on the visible side.
+**Where:** [corner_matcher.dart](lib/core/ar/corner_matcher.dart), [ar_setup_controller.dart](lib/state/ar_setup_controller.dart)
+
+### Dio makes a 304 look like an empty 200; the manifest fetch must test it first (2026-09-26)
+**What happened:** `validateStatus` accepts anything under 400, so `If-None-Match` → 304 comes back as a success with no body. Parsing it would save an empty manifest and wipe the floor pack.
+**Fix:** `DioArTransport` returns `status: 304` with no body, and `fetchManifest` checks it before parsing. If a 304 arrives for a copy that has since been wiped, the fetch is repeated without the tag.
+**Where:** [ar_repository.dart](lib/data/ar_repository.dart) `fetchManifest`, `DioArTransport.getJson`
+
+### Engine coaching codes are not errors (2026-09-26)
+**What happened:** setup polls `detectCornerAt` every 600 ms while the user aims. Each empty snap makes `fe_ar` emit a throttled `corner-no-surface` / `corner-no-floor` / `corner-not-found` error event, and `marker-unstable` means "hold still". The session showed each one as a red "AR hiccup (corner-no-surface)" toast mid-aim.
+**Fix:** `ArSessionController._coachKeyFor` maps those codes to coaching toasts (`ar.corner.coach`, `ar.coach.floor`, `ar.coach.tracking`, `ar.lock.hold_still`). Only unknown codes stay errors.
+**What to watch:** when `fe_ar` gains a code, add it to CHANNEL.md's table **and** decide here whether it's coaching or a fault.
+**Where:** [ar_session_controller.dart](lib/state/ar_session_controller.dart) `_onEvent`
+
+### Match the server's wire names exactly: `ar_install_request`, `MODEL_OLDER_THAN_LATEST_UPLOAD` (2026-09-26)
+**What happened:** the app, written in parallel with the server from contract v1, guessed `ArInstallRequest` as the push entity type and `older-build` as the resolve badge. The server sends `ar_install_request` (`installRequestService.ts`) and `MODEL_OLDER_THAN_LATEST_UPLOAD` (`resolveService.ts RESOLVE_BADGE`). The push link still routed correctly, but a link-less push would have gone nowhere, and the "model is older than the latest upload" hint never showed.
+**Fix:** both notification routers and the scan sheet accept the server spelling; the guessed spelling is kept as a fallback.
+**What to watch:** for any string the contract doesn't spell out, grep the server before writing the client side.
+**Where:** [notification_route.dart](lib/core/utils/notification_route.dart), [push_service.dart](lib/core/push/push_service.dart), [ar_marker_screen.dart](lib/features/ar/ar_marker_screen.dart)
+
+### Riverpod: a session restart never shows as a direct floor A → floor B change (2026-09-26)
+**What happened:** `ArSessionController.start()` passes through a state with `floor == null`, so a listener check like `prev.floor != null && next.floor != null && !identical(...)` never fired after a Demo toggle or a retry. Setup and workspace kept stale state. Separately, the saved "Demo on" flag is read asynchronously, so a session that read `prefs.demo` synchronously started live on the first run.
+**Fix:** listeners track the last floor object they saw. The session awaits `ArPrefsController.ready`, a `Completer`, before choosing `FakeArEngine` or `ChannelArEngine`.
+**Where:** [ar_setup_controller.dart](lib/state/ar_setup_controller.dart), [ar_workspace_controller.dart](lib/state/ar_workspace_controller.dart), [ar_prefs_controller.dart](lib/state/ar_prefs_controller.dart)
+
+### `fe_ar` native: what only a laptop can test, and the hosting traps (2026-09-26)
+**What happened:** building the native plugin with no Android or iOS toolchain showed several constraints. SceneView 4.x (4.39) is Compose-only, and FlutterActivity is not a ComponentActivity, so `ARSceneView` is hosted in a `ComposeView` with a hand-made lifecycle, saved-state and view-model owner. Flutter's default `AndroidView` (texture-layer hybrid composition) can't show a `SurfaceView`, so SceneView uses `SurfaceType.TextureSurface`. Filament's Java gltfio exposes no vertex data, so CPU picking decodes the `EXT_meshopt_compression` tiles again in a shared C99 core. That core is the one part testable on a laptop: 131 checks under ASan/UBSan, with fixtures made by the server's real meshopt encoder. meshopt's index codec may rotate a triangle's vertices, so compare index buffers up to rotation.
+**What to watch:** Swift can be type-checked with `swiftc -typecheck -import-objc-header` and small ARKit/Flutter/UIKit stubs; it found a real `simd_float4x4 * simd_float4x4 * SIMD4` grouping bug. Compile `.m` files with `clang -fobjc-arc` separately: swiftc-driven harnesses build them without ARC and they crash.
+**Where:** [packages/fe_ar/README.md](packages/fe_ar/README.md), [CHANNEL.md](packages/fe_ar/CHANNEL.md)
 
 ## Snag Assistant
 

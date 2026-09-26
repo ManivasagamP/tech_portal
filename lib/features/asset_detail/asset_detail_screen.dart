@@ -7,6 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../app/env.dart';
 import '../../app/router.dart';
 import '../../core/c2o/asset_detail.dart';
+import '../ar/widgets/ar_entry_widgets.dart';
 import '../../state/auth_controller.dart';
 import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
@@ -174,6 +175,14 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _ViewIn3DButton(detail: detail),
+                        ),
+                      // AR Locate (docs/ar-bim-overlay.md §1.1): the asset
+                      // drawn through walls where it really is. Needs a floor;
+                      // the AR screens find the model and place it.
+                      if (detail.floorId != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: ShowInArButton(assetId: detail.id, floorId: detail.floorId),
                         ),
                       // FR-2.8 — hidden rather than shown-and-empty when the
                       // register has no floor recorded for this asset at

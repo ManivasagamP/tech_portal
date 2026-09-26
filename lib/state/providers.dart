@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/ar/ar_engine.dart';
+import '../core/ar/channel_ar_engine.dart';
 import '../core/network/api_client.dart';
 import '../core/offline/background_sync.dart';
 import '../core/offline/offline_db.dart';
@@ -10,6 +12,7 @@ import '../core/storage/session_store.dart';
 import '../core/c2o/c2o_asset_resolver.dart';
 import '../core/c2o/route_download_service.dart';
 import '../core/floorplan/floor_plan_image_cache.dart';
+import '../data/ar_repository.dart';
 import '../data/asset_repository.dart';
 import '../data/asset_tag_issue_repository.dart';
 import '../data/auth_repository.dart';
@@ -170,6 +173,26 @@ final routeAssignmentRepositoryProvider = Provider<RouteAssignmentRepository>(
 final assignedRoutesProvider = FutureProvider<AssignedRoutesRead>(
   (ref) => ref.watch(routeAssignmentRepositoryProvider).fetchMine(),
 );
+
+/// AR BIM overlay (docs/ar-setup-and-gamma-parity.md): the native engine
+/// over the `fusioneco/ar` channel. A build without the plugin answers
+/// `capabilities()` with `supported: false` and the AR screens fall back to
+/// the floor plan or Demo mode. Demo mode builds its own `FakeArEngine` per
+/// session (see `ar_session_controller.dart`), never through this provider.
+final arEngineProvider = Provider<ArEngine>((ref) => ChannelArEngine());
+
+/// AR floor packs, board resolution and AR writes — offline-first like every
+/// other repository here (manifest/tiles/markers cached, writes queued).
+final arRepositoryProvider = Provider<ArRepository>(
+  (ref) => ArRepository(
+    api: ref.watch(apiClientProvider),
+    sync: ref.watch(syncClientProvider),
+    store: ref.watch(arPackStoreProvider),
+  ),
+);
+
+/// The AR pack tables (schema v10) live in the offline DB.
+final arPackStoreProvider = Provider<ArPackStore>((ref) => ref.watch(offlineDbProvider));
 
 final notificationsRepositoryProvider = Provider<NotificationsRepository>(
   (ref) => NotificationsRepository(ref.watch(apiClientProvider)),

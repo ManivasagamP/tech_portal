@@ -1,0 +1,141 @@
+// fe_feature: the one material every tile primitive is drawn with, on both
+// platforms (docs/ar-bim-overlay.md §2.4: "the tile format and the highlight
+// material ARE the product and should exist once").
+//
+// Compile with the matc that matches the RUNTIME Filament version exactly
+// (Android: SceneView's pinned Filament; iOS: the Filament pod), for every
+// backend at once:
+//   matc --api all --platform mobile -o fe_feature.filamat fe_feature.mat
+// tool/compile_materials.sh does this and copies the result to both
+// platforms. A missing .filamat is not fatal: the engine falls back to
+// gltfio's stock material tinted per layer (no feature state, no section).
+//
+// Feature state (lib/core/ar/feature_state.dart, CONTRACT C8): the native side
+// gathers the app's per-feature RGBA texture into a small per-TILE texture
+// indexed by the tile-local feature index (TEXCOORD_1.x, CONTRACT C7), so the
+// shader needs one fetch and no id table. Texel encoding, shared with Dart:
+//   rgb  tint (sRGB; the texture is SRGB8_A8 so it arrives linear); 0,0,0 =
+//        no tint, use the layer colour
+//   a    display mode, round(a * 255 / 85): 0 hidden, 1 ghost, 2 normal,
+//        3 highlight (drawn through walls, outlined)
+//
+// Three draw passes of the same geometry (three gltfio instances sharing one
+// vertex buffer, see TileRenderer): `pass` picks which modes each draws.
+//   0 solid   normal + highlight modes, depth-tested (MEP writes depth)
+//   1 ghost   ghost mode only, never writes depth, drawn after solids
+//   2 x-ray   highlight mode only, depth test off, drawn last and pulsing:
+//             this is what makes a valve in a ceiling void visible "through"
+//             the drawn ceiling and structure
+material {
+    name : fe_feature,
+    shadingModel : unlit,
+    blending : transparent,
+    depthWrite : true,
+    doubleSided : true,
+    requires : [
+        uv0,
+        uv1
+    ],
+    parameters : [
+        { type : sampler2d, name : featureState, precision : medium },
+        { type : float, name : stateWidth },
+        { type : float, name : stateEnabled },
+        { type : float4, name : layerColor },
+        { type : float, name : ghostAlpha },
+        { type : float4, name : highlightColor },
+        { type : float, name : opacity },
+        { type : float, name : sectionEnabled },
+        { type : float, name : sectionWorldY },
+        { type : float, name : pass },
+        { type : float, name : isLines },
+        { type : float, name : time }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // Section plane: tile Y + the fit's vertical offset = user-world Y
+        // (the fit is yaw + translation only, CONTRACT C2). Native keeps
+        // sectionWorldY in step with the eased model transform.
+        // getUserWorldPosition(), getUV0/1() and getWorldCameraPosition() are in
+        // Filament 1.72.1's shaders/src (checked 2026-09-26).
+        if (materialParams.sectionEnabled > 0.5 && getUserWorldPosition().y > materialParams.sectionWorldY) {
+            discard;
+        }
+
+        // The local feature index. gltfio may bind TEXCOORD_1 to UV1, or to UV0
+        // when the tile has no TEXCOORD_0 (it keeps unused sets in free slots
+        // so a custom material can read them); the unused slot reads 0, so
+        // max() finds the index either way. Only .x is used: gltfio may flip V.
+        // TODO(slice-0): confirm which slot gltfio uses for the server's tiles.
+        float index = floor(max(getUV0().x, getUV1().x) + 0.5);
+
+        float4 state = float4(0.0, 0.0, 0.0, 170.0 / 255.0);
+        if (materialParams.stateEnabled > 0.5) {
+            float w = max(materialParams.stateWidth, 1.0);
+            float row = floor(index / w);
+            float col = index - row * w;
+            state = texelFetch(materialParams_featureState, ivec2(int(col), int(row)), 0);
+        }
+        float mode = floor(state.a * 255.0 / 85.0 + 0.5);
+        if (mode < 0.5) {
+            discard;
+        }
+
+        float pass = materialParams.pass;
+        if (pass < 0.5) {
+            if (mode < 1.5) discard;            // solid: normal + highlight
+        } else if (pass < 1.5) {
+            if (mode > 1.5) discard;            // ghost only
+        } else {
+            if (mode < 2.5) discard;            // x-ray: highlight only
+        }
+
+        bool tinted = (state.r + state.g + state.b) > 0.0;
+        float3 base;
+        float alpha;
+        if (mode > 2.5) {
+            base = tinted ? state.rgb : materialParams.highlightColor.rgb;
+            alpha = 1.0;
+        } else if (mode > 1.5) {
+            base = tinted ? state.rgb : materialParams.layerColor.rgb;
+            alpha = materialParams.layerColor.a;
+        } else {
+            base = tinted ? state.rgb : materialParams.layerColor.rgb;
+            alpha = materialParams.ghostAlpha;
+        }
+
+        // Headlight shading from the screen-space face normal: tiles may ship
+        // without normals (CONTRACT C7 makes NORMAL optional), and a flat
+        // unlit fill makes pipes unreadable. Edges (lines) stay flat.
+        float shade = 1.0;
+        if (materialParams.isLines < 0.5) {
+            float3 p = getWorldPosition();
+            float3 n = normalize(cross(dFdx(p), dFdy(p)));
+            // camera position minus fragment works whether or not Filament's
+            // shading world space is camera-relative
+            float3 v = normalize(getWorldCameraPosition() - p);
+            float ndv = abs(dot(n, v));
+            shade = 0.58 + 0.42 * ndv;
+            if (mode > 2.5) {
+                // a bright rim at grazing angles reads as an outline
+                float rim = pow(1.0 - ndv, 3.0);
+                base = mix(base, materialParams.highlightColor.rgb * 0.4 + float3(0.6), rim * 0.7);
+            }
+        }
+
+        if (pass > 1.5) {
+            // x-ray: a translucent, gently pulsing body over whatever is in front
+            float pulse = 0.5 + 0.5 * sin(materialParams.time * 3.5);
+            alpha = 0.30 + 0.30 * pulse;
+            base = mix(base, float3(1.0), 0.12 * pulse);
+            shade = 1.0;
+        }
+
+        alpha *= materialParams.opacity;
+        // transparent blending expects premultiplied colour
+        material.baseColor = float4(base * shade * alpha, alpha);
+    }
+}

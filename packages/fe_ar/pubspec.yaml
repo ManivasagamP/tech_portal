@@ -1,0 +1,25 @@
+name: fe_ar
+description: "FieldOps native AR engine: ARCore via SceneView (Android) and ARKit + Filament (iPhone, iPad) behind the fusioneco/ar channel. Headless: all UI is Flutter's."
+version: 0.1.0
+publish_to: 'none'
+
+# Opt-in: NOT a dependency of the app until slice 0 builds it on devices
+# (docs/ar-bim-overlay.md §11). Enabling it is one path dependency; see
+# README.md. It adds no pub packages of its own.
+
+environment:
+  sdk: ^3.13.2
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.fusionapps.fe_ar
+        pluginClass: FeArPlugin
+      ios:
+        pluginClass: FeArPlugin

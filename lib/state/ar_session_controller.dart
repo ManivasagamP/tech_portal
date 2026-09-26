@@ -1,0 +1,1075 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' show Size;
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/ar/alignment_estimator.dart';
+import '../core/ar/ar_engine.dart';
+import '../core/ar/corner_matcher.dart';
+import '../core/ar/marker_code.dart';
+import '../core/ar/vec.dart';
+import 'ar_catalog_controller.dart';
+import 'ar_demo_director.dart';
+import 'ar_engine_bridge.dart';
+import 'ar_gateway.dart';
+import 'ar_prefs_controller.dart';
+import 'ar_view_models.dart';
+import 'providers.dart';
+
+/// One AR session (docs/ar-bim-overlay.md §4.6, §6; ar-setup-and-gamma-parity.md
+/// §2). "Native executes, Dart decides": this controller owns the engine's
+/// lifetime, every observation, the 4-DoF fit, which tiles are resident,
+/// what is targeted and whether the overlay is drifting. The setup flow
+/// (`ArSetupController`) and the workspace (`ArWorkspaceController`) sit on
+/// top and only call the methods here.
+///
+/// Demo mode swaps two things and nothing else: the gateway (sample
+/// building) and the engine (`FakeArEngine`). Because the fake's scripted
+/// sightings can't know the sample building's geometry, sightings in Demo
+/// mode come from [ArDemoDirector], which projects the sample corners and
+/// boards through a hidden "true" pose so the fit behaves exactly as it
+/// would on site (amber after one corner, green after two, a real residual).
+
+enum ArSessionPhase { idle, checking, unsupported, loading, running, failed }
+
+enum ArSessionStage { setup, work }
+
+class ArSessionArgs {
+  const ArSessionArgs({
+    required this.floorId,
+    this.method,
+    this.targetGlobalId,
+    this.assetId,
+    this.workOrderId,
+    this.focusCode,
+    this.lineages = const {},
+    this.spaceName,
+    this.installCode,
+  });
+
+  final String floorId;
+  final ArPlaceMethod? method;
+  final String? targetGlobalId;
+  final String? assetId;
+  final String? workOrderId;
+
+  /// The board that opened this session (`/ar/marker/:code`), if any.
+  final String? focusCode;
+
+  /// Model lineages ticked in the models picker; empty = every ready model.
+  final Set<String> lineages;
+
+  /// The room from a work order or asset, to narrow corner A's choices.
+  final String? spaceName;
+
+  /// Installer self-check: the board this stop expects. Setup leaves
+  /// not-yet-active boards to `ArInstallController` in this mode.
+  final String? installCode;
+
+  bool get hasTarget => (targetGlobalId?.isNotEmpty ?? false) || (assetId?.isNotEmpty ?? false);
+}
+
+/// A board seen by the engine this session, with its code parsed.
+class ArMarkerSighting {
+  const ArMarkerSighting({
+    required this.seq,
+    required this.code,
+    required this.centreAr,
+    required this.normalAr,
+    required this.method,
+    required this.spreadMm,
+    required this.distanceM,
+    required this.viewAngleDeg,
+    this.anchorId,
+    this.qrEdgeMm,
+    this.raw,
+  });
+
+  final int seq;
+
+  /// Canonical code, or null when the QR was not a FusionEco board.
+  final String? code;
+  final String? raw;
+  final String? anchorId;
+  final Vec3 centreAr;
+  final Vec3 normalAr;
+  final String method;
+  final double spreadMm;
+  final double distanceM;
+  final double viewAngleDeg;
+
+  /// The QR's measured edge, for the print-scale check (115 mm expected).
+  final double? qrEdgeMm;
+
+  /// §4.2 acceptance: 0.5–2.0 m, within 35° of square-on, steady.
+  bool get distanceOk => distanceM >= 0.5 && distanceM <= 2.0;
+  bool get squareOn => viewAngleDeg <= 35;
+  bool get steady => spreadMm <= 15;
+  bool get acceptable => distanceOk && squareOn && steady;
+
+  /// Measured print scale in percent, when the engine measured the QR edge.
+  double? scalePct(double expectedMm) => qrEdgeMm == null || expectedMm <= 0 ? null : qrEdgeMm! / expectedMm * 100;
+}
+
+class ArCornerSighting {
+  const ArCornerSighting({required this.seq, required this.corner});
+  final int seq;
+  final DetectedCorner corner;
+}
+
+enum ArToastTone { info, success, warning, error }
+
+/// A one-shot message for the screen (shown once per [seq]).
+class ArToast {
+  const ArToast({required this.seq, required this.key, this.args = const [], this.tone = ArToastTone.info});
+  final int seq;
+  final String key;
+  final List<Object> args;
+  final ArToastTone tone;
+}
+
+/// Structured badge facts; the widget layer words them (§2.7).
+class ArBadgeInfo {
+  const ArBadgeInfo({
+    required this.quality,
+    this.boards = 0,
+    this.corners = 0,
+    this.residualM = 0,
+    this.nudgeM = 0,
+    this.walkedSinceCheckM,
+  });
+
+  final AlignmentQuality quality;
+  final int boards;
+  final int corners;
+  final double residualM;
+  final double nudgeM;
+  final double? walkedSinceCheckM;
+}
+
+class ArSessionState {
+  const ArSessionState({
+    this.phase = ArSessionPhase.idle,
+    this.stage = ArSessionStage.setup,
+    this.args,
+    this.demo = false,
+    this.capabilities,
+    this.floor,
+    this.plan,
+    this.features = const [],
+    this.download = const ArDownloadProgress(),
+    this.tracking = 'initializing',
+    this.trackingReason,
+    this.observations = const [],
+    this.fit,
+    this.nudgeM = 0,
+    this.nudgeAxisAr,
+    this.cameraAr,
+    this.cameraForwardAr,
+    this.walkedM = 0,
+    this.walkedAtCheckM = 0,
+    this.target,
+    this.targetOnScreen = false,
+    this.targetScreen,
+    this.lastMarker,
+    this.lastCorner,
+    this.toast,
+    this.error,
+    this.gridVisible = true,
+    this.driftM,
+    this.paused = false,
+  });
+
+  final ArSessionPhase phase;
+  final ArSessionStage stage;
+  final ArSessionArgs? args;
+  final bool demo;
+  final ArCapabilities? capabilities;
+  final ArFloorContext? floor;
+  final ArPlan? plan;
+  final List<ArFeature> features;
+  final ArDownloadProgress download;
+
+  /// [ArTracking] values (`initializing | tracking | limited | paused | …`).
+  final String tracking;
+  final String? trackingReason;
+  final List<ArObservation> observations;
+  final AlignmentFit? fit;
+
+  /// The guided single-axis nudge (§2.6), metres along [nudgeAxisAr].
+  final double nudgeM;
+  final Vec3? nudgeAxisAr;
+  final Vec3? cameraAr;
+  final Vec3? cameraForwardAr;
+  final double walkedM;
+
+  /// [walkedM] at the last observation: "checked 3 m ago".
+  final double walkedAtCheckM;
+  final ArFeature? target;
+  final bool targetOnScreen;
+
+  /// Target's screen position in the AR view's logical pixels (the engine's
+  /// `targetScreen` event), when known.
+  final (double, double)? targetScreen;
+  final ArMarkerSighting? lastMarker;
+  final ArCornerSighting? lastCorner;
+  final ArToast? toast;
+
+  /// Error key for [ArSessionPhase.failed] / [ArSessionPhase.unsupported].
+  final String? error;
+  final bool gridVisible;
+
+  /// Last measured drift, for the "Corrected 4 cm" / "re-snap" messages.
+  final double? driftM;
+  final bool paused;
+
+  AlignmentQuality get quality => fit?.quality ?? AlignmentQuality.none;
+  bool get isPlaced => quality != AlignmentQuality.none;
+  bool get isLocked => quality == AlignmentQuality.locked;
+
+  int get boardCount => observations.where((o) => o.kind == 'marker').length;
+  int get cornerCount => observations.where((o) => o.kind == 'corner').length;
+
+  /// Camera in the model, once placed.
+  Vec3? get cameraTile => (fit == null || cameraAr == null || !isPlaced) ? null : fit!.arToTile(cameraAr!);
+
+  /// Camera heading in the model's plan, once placed.
+  Vec2? get forwardTileXz {
+    if (fit == null || cameraForwardAr == null || !isPlaced) return null;
+    final d = fit!.dirArToTile(cameraForwardAr!);
+    final xz = Vec2(d.x, d.z);
+    return xz.length < 1e-6 ? null : xz.normalized;
+  }
+
+  ArBadgeInfo get badge => ArBadgeInfo(
+    quality: quality,
+    boards: boardCount,
+    corners: cornerCount,
+    residualM: fit?.maxResidualM ?? 0,
+    nudgeM: nudgeM,
+    walkedSinceCheckM: observations.isEmpty ? null : math.max(0, walkedM - walkedAtCheckM),
+  );
+
+  ArSessionState copyWith({
+    ArSessionPhase? phase,
+    ArSessionStage? stage,
+    ArSessionArgs? args,
+    bool? demo,
+    ArCapabilities? capabilities,
+    ArFloorContext? floor,
+    ArPlan? plan,
+    List<ArFeature>? features,
+    ArDownloadProgress? download,
+    String? tracking,
+    String? trackingReason,
+    List<ArObservation>? observations,
+    AlignmentFit? fit,
+    bool clearFit = false,
+    double? nudgeM,
+    Vec3? nudgeAxisAr,
+    bool clearNudgeAxis = false,
+    Vec3? cameraAr,
+    Vec3? cameraForwardAr,
+    double? walkedM,
+    double? walkedAtCheckM,
+    ArFeature? target,
+    bool clearTarget = false,
+    bool? targetOnScreen,
+    (double, double)? targetScreen,
+    ArMarkerSighting? lastMarker,
+    ArCornerSighting? lastCorner,
+    ArToast? toast,
+    String? error,
+    bool clearError = false,
+    bool? gridVisible,
+    double? driftM,
+    bool? paused,
+  }) => ArSessionState(
+    phase: phase ?? this.phase,
+    stage: stage ?? this.stage,
+    args: args ?? this.args,
+    demo: demo ?? this.demo,
+    capabilities: capabilities ?? this.capabilities,
+    floor: floor ?? this.floor,
+    plan: plan ?? this.plan,
+    features: features ?? this.features,
+    download: download ?? this.download,
+    tracking: tracking ?? this.tracking,
+    trackingReason: trackingReason ?? this.trackingReason,
+    observations: observations ?? this.observations,
+    fit: clearFit ? null : (fit ?? this.fit),
+    nudgeM: nudgeM ?? this.nudgeM,
+    nudgeAxisAr: clearNudgeAxis ? null : (nudgeAxisAr ?? this.nudgeAxisAr),
+    cameraAr: cameraAr ?? this.cameraAr,
+    cameraForwardAr: cameraForwardAr ?? this.cameraForwardAr,
+    walkedM: walkedM ?? this.walkedM,
+    walkedAtCheckM: walkedAtCheckM ?? this.walkedAtCheckM,
+    target: clearTarget ? null : (target ?? this.target),
+    targetOnScreen: targetOnScreen ?? this.targetOnScreen,
+    targetScreen: targetScreen ?? this.targetScreen,
+    lastMarker: lastMarker ?? this.lastMarker,
+    lastCorner: lastCorner ?? this.lastCorner,
+    toast: toast ?? this.toast,
+    error: clearError ? null : (error ?? this.error),
+    gridVisible: gridVisible ?? this.gridVisible,
+    driftM: driftM ?? this.driftM,
+    paused: paused ?? this.paused,
+  );
+}
+
+class ArSessionController extends AutoDisposeNotifier<ArSessionState> {
+  static const _estimator = AlignmentEstimator();
+  static final _residency = makeResidency();
+
+  ArEngine? _engine;
+  ArGateway? _gateway;
+  ArDemoDirector? _director;
+  StreamSubscription<ArEvent>? _events;
+  Timer? _demoDriftTimer;
+  var _disposed = false;
+  var _seq = 0;
+  var _startToken = 0;
+
+  /// Completed when the native platform view exists: the engine's session
+  /// runs inside that view, so `startSession` waits for it (with a timeout,
+  /// so a slow device still gets an error screen rather than a hang).
+  Completer<void>? _viewReady;
+
+  /// Called by the AR view's `onPlatformViewCreated`.
+  void onViewCreated(int id) {
+    final c = _viewReady;
+    if (c != null && !c.isCompleted) c.complete();
+  }
+
+  /// Native anchor → observation id, so an anchor refinement refits.
+  final _anchorToObs = <String, String>{};
+  final _loadedTiles = <String>{};
+  var _residencyBusy = false;
+  Vec3? _residencyAtCamera;
+  double? _lockedResidualM;
+  var _reportedLock = false;
+  DateTime _lastPoseAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// The AR view's size in logical pixels (set by the screen's layout):
+  /// `pick` and `detectCornerAt` take view pixels.
+  Size viewSize = const Size(390, 844);
+
+  ArEngine? get engine => _engine;
+  ArGateway? get gateway => _gateway;
+  ArDemoDirector? get director => _director;
+
+  @override
+  ArSessionState build() {
+    ref.onDispose(_teardown);
+    return const ArSessionState();
+  }
+
+  void _set(ArSessionState next) {
+    if (_disposed) return;
+    state = next;
+  }
+
+  void toast(String key, {List<Object> args = const [], ArToastTone tone = ArToastTone.info}) {
+    _set(state.copyWith(toast: ArToast(seq: ++_seq, key: key, args: args, tone: tone)));
+  }
+
+  // ---------------------------------------------------------------- start
+
+  /// Opens (or re-opens, after a Demo toggle) the session for [args].
+  Future<void> start(ArSessionArgs args) async {
+    final token = ++_startToken;
+    await _stopEngine();
+    _anchorToObs.clear();
+    _loadedTiles.clear();
+    _lockedResidualM = null;
+    _reportedLock = false;
+    _set(ArSessionState(phase: ArSessionPhase.checking, args: args, tracking: ArTracking.initializing));
+    await ref.read(arPrefsProvider.notifier).ready;
+    if (_disposed || token != _startToken) return;
+    final demo = ref.read(arPrefsProvider).demo;
+    _set(state.copyWith(demo: demo));
+
+    final engine = demo ? makeFakeEngine() : ref.read(arEngineProvider);
+    _engine = engine;
+    _gateway = ref.read(arGatewayProvider);
+
+    ArCapabilities caps;
+    try {
+      caps = await engine.capabilities();
+    } catch (_) {
+      caps = unsupportedCapabilities('engine-not-installed');
+    }
+    if (_disposed || token != _startToken) return;
+    if (!caps.supported && !demo) {
+      _set(state.copyWith(phase: ArSessionPhase.unsupported, capabilities: caps, error: caps.reason ?? 'unsupported'));
+      return;
+    }
+    _viewReady = Completer<void>();
+    _set(state.copyWith(phase: ArSessionPhase.loading, capabilities: caps));
+
+    // Floor first: the setup screens need its corners and boards.
+    ArFloorContext floor;
+    try {
+      floor = await _gateway!.floorContext(args.floorId, focusCode: args.focusCode);
+    } catch (e) {
+      if (_disposed || token != _startToken) return;
+      _set(state.copyWith(phase: ArSessionPhase.failed, error: arErrorKey(e)));
+      return;
+    }
+    if (_disposed || token != _startToken) return;
+    floor = _filterLineages(floor, args.lineages);
+    _director = demo ? ArDemoDirector(floor: floor) : null;
+
+    _events = engine.events.listen(_onEvent, onError: (_) {});
+    if (!demo) {
+      // The screen builds the native view once capabilities say "supported".
+      await _viewReady!.future.timeout(const Duration(seconds: 4), onTimeout: () {});
+      if (_disposed || token != _startToken) return;
+    }
+    try {
+      await engine.startSession();
+    } catch (e) {
+      if (_disposed || token != _startToken) return;
+      _set(state.copyWith(phase: ArSessionPhase.failed, error: arErrorKey(e)));
+      return;
+    }
+    if (_disposed || token != _startToken) return;
+
+    _set(state.copyWith(phase: ArSessionPhase.running, floor: floor, tracking: demo ? ArTracking.tracking : state.tracking));
+
+    // Everything below streams in while the user starts aligning (§7 rule 4).
+    unawaited(_loadPlan(floor, token));
+    unawaited(_loadFeatures(floor, args, token));
+    unawaited(_download(floor, token));
+    unawaited(_pushGridLines());
+  }
+
+  /// Re-runs [start] with the same arguments (after toggling Demo mode).
+  Future<void> restart() async {
+    final args = state.args;
+    if (args != null) await start(args);
+  }
+
+  ArFloorContext _filterLineages(ArFloorContext f, Set<String> lineages) {
+    if (lineages.isEmpty) return f;
+    final builds = f.builds.where((b) => lineages.contains(b.lineage)).toList();
+    if (builds.isEmpty) return f;
+    final ids = builds.map((b) => b.buildId).toSet();
+    return ArFloorContext(
+      buildingId: f.buildingId,
+      buildingName: f.buildingName,
+      floorId: f.floorId,
+      floorName: f.floorName,
+      builds: builds,
+      tiles: f.tiles.where((t) => ids.contains(arTileBuildId(t))).toList(),
+      markers: f.markers,
+      corners: f.corners,
+      gridLines: f.gridLines,
+      floorFinishOffsetM: f.floorFinishOffsetM,
+      floorDatumY: f.floorDatumY,
+      totalBytes: f.tiles.where((t) => ids.contains(arTileBuildId(t))).fold<int>(0, (s, t) => s + arTileBytes(t)),
+      focusBytes: f.focusBytes,
+      fromCache: f.fromCache,
+    );
+  }
+
+  Future<void> _loadPlan(ArFloorContext floor, int token) async {
+    try {
+      final plan = await _gateway!.floorPlan(floor.floorId);
+      if (_disposed || token != _startToken || plan == null) return;
+      _set(state.copyWith(plan: plan));
+    } catch (_) {
+      // The mini plan is a guide; setup still works from the corner list.
+    }
+  }
+
+  Future<void> _loadFeatures(ArFloorContext floor, ArSessionArgs args, int token) async {
+    try {
+      final features = await _gateway!.features(floor);
+      if (_disposed || token != _startToken) return;
+      ArFeature? target;
+      for (final f in features) {
+        final byGlobal = args.targetGlobalId != null && f.globalId == args.targetGlobalId;
+        final byAsset = args.assetId != null && f.assetId == args.assetId;
+        if (byGlobal || byAsset) {
+          target = f;
+          break;
+        }
+      }
+      _set(state.copyWith(features: features, target: target));
+      if (target != null) await setTargetFeature(target);
+      if (args.hasTarget && target == null) {
+        toast('ar.toast.target_not_in_model', tone: ArToastTone.warning);
+      }
+    } catch (_) {
+      // Picking and Locate need features; the overlay itself doesn't.
+      toast('ar.toast.features_unavailable', tone: ArToastTone.warning);
+    }
+  }
+
+  Future<void> _download(ArFloorContext floor, int token) async {
+    try {
+      await _gateway!.download(
+        floor,
+        onProgress: (p) {
+          if (_disposed || token != _startToken) return;
+          final wasFocusReady = state.download.focusReady && state.download.focusTotalBytes > 0;
+          _set(state.copyWith(download: p));
+          if (p.focusReady && !wasFocusReady) unawaited(_updateResidency(force: true));
+        },
+      );
+      if (_disposed || token != _startToken) return;
+      _set(state.copyWith(download: ArDownloadProgress(
+        focusDoneBytes: state.download.focusTotalBytes,
+        focusTotalBytes: state.download.focusTotalBytes,
+        doneBytes: state.download.totalBytes,
+        totalBytes: state.download.totalBytes,
+        done: true,
+      )));
+      unawaited(_updateResidency(force: true));
+    } catch (e) {
+      if (_disposed || token != _startToken) return;
+      _set(state.copyWith(download: ArDownloadProgress(
+        focusDoneBytes: state.download.focusDoneBytes,
+        focusTotalBytes: state.download.focusTotalBytes,
+        doneBytes: state.download.doneBytes,
+        totalBytes: state.download.totalBytes,
+        error: arErrorKey(e),
+      )));
+      // Whatever is local still renders.
+      unawaited(_updateResidency(force: true));
+    }
+  }
+
+  // --------------------------------------------------------------- events
+
+  void _onEvent(ArEvent e) {
+    if (_disposed) return;
+    // An if-chain rather than a switch: a switch over the sealed event type
+    // would stop compiling the day the engine grows a new event, and a new
+    // event is always safe to ignore here.
+    if (e is TrackingEvent) {
+      _set(state.copyWith(tracking: e.state, trackingReason: e.reason));
+    } else if (e is MarkerSeenEvent) {
+      // Demo sightings come from the director (see the class comment).
+      if (state.demo) return;
+      _onMarkerSeen(
+        raw: e.rawPayload,
+        anchorId: e.anchorId,
+        centreAr: e.centreAr,
+        normalAr: e.normalAr,
+        method: e.method,
+        spreadMm: e.spreadMm,
+        distanceM: e.distanceM,
+        viewAngleDeg: e.viewAngleDeg,
+        qrEdgeMm: e.qrEdgeMm,
+      );
+    } else if (e is CornerSeenEvent) {
+      if (state.demo) return;
+      _set(state.copyWith(lastCorner: ArCornerSighting(seq: ++_seq, corner: DetectedCorner.fromSeen(e))));
+    } else if (e is AnchorUpdatedEvent) {
+      _onAnchorUpdated(e.anchorId, e.posAr);
+    } else if (e is CameraPoseEvent) {
+      // Demo: the fake's camera walks a different sample floor; the
+      // director places the camera instead (see addObservation).
+      if (state.demo) return;
+      _onPose(e.arFromCamera);
+    } else if (e is TargetScreenEvent) {
+      _set(state.copyWith(targetOnScreen: e.onScreen, targetScreen: (e.x, e.y)));
+    } else if (e is ArErrorEvent) {
+      // Coaching codes (fe_ar CHANNEL.md "Error codes") are guidance, not
+      // faults: while setup polls for a corner every 600 ms, each empty snap
+      // makes the engine emit a throttled `corner-*` code, and "AR hiccup
+      // (corner-no-surface)" in red would read as a failure mid-aim.
+      final coach = _coachKeyFor(e.code);
+      if (coach != null) {
+        toast(coach);
+      } else {
+        toast('ar.toast.engine_error', args: [e.code], tone: ArToastTone.error);
+      }
+    }
+  }
+
+  static String? _coachKeyFor(String code) => switch (code) {
+        'corner-no-surface' || 'corner-no-walls' || 'corner-not-found' => 'ar.corner.coach',
+        'corner-no-floor' => 'ar.coach.floor',
+        'corner-not-tracking' => 'ar.coach.tracking',
+        'marker-unstable' => 'ar.lock.hold_still',
+        _ => null,
+      };
+
+  void _onMarkerSeen({
+    required String raw,
+    required Vec3 centreAr,
+    required Vec3 normalAr,
+    required String method,
+    required double spreadMm,
+    required double distanceM,
+    required double viewAngleDeg,
+    String? anchorId,
+    double? qrEdgeMm,
+  }) {
+    _set(state.copyWith(
+      lastMarker: ArMarkerSighting(
+        seq: ++_seq,
+        code: MarkerCode.fromScan(raw),
+        raw: raw,
+        anchorId: anchorId,
+        centreAr: centreAr,
+        normalAr: normalAr,
+        method: method,
+        spreadMm: spreadMm,
+        distanceM: distanceM,
+        viewAngleDeg: viewAngleDeg,
+        qrEdgeMm: qrEdgeMm,
+      ),
+    ));
+  }
+
+  /// Demo mode: a board sighting synthesised by [ArDemoDirector].
+  void injectDemoMarker(ArMarkerSighting s) {
+    _set(state.copyWith(lastMarker: ArMarkerSighting(
+      seq: ++_seq,
+      code: s.code,
+      raw: s.raw,
+      anchorId: s.anchorId,
+      centreAr: s.centreAr,
+      normalAr: s.normalAr,
+      method: s.method,
+      spreadMm: s.spreadMm,
+      distanceM: s.distanceM,
+      viewAngleDeg: s.viewAngleDeg,
+      qrEdgeMm: s.qrEdgeMm,
+    )));
+  }
+
+  /// Demo mode: a corner snap synthesised by [ArDemoDirector].
+  void injectDemoCorner(DetectedCorner corner) {
+    _set(state.copyWith(lastCorner: ArCornerSighting(seq: ++_seq, corner: corner)));
+  }
+
+  void _onPose(Mat4 arFromCamera) {
+    final now = DateTime.now();
+    final m = arFromCamera.toList();
+    final cam = Vec3(m[12], m[13], m[14]);
+    // Camera looks down its −Z axis.
+    final forward = Vec3(-m[8], -m[9], -m[10]);
+    final prev = state.cameraAr;
+    final step = prev == null ? 0.0 : prev.distanceXzTo(cam);
+    // A tracking jump (relocalisation) is not walking.
+    final walked = state.walkedM + (step < 3 ? step : 0);
+    if (now.difference(_lastPoseAt) < const Duration(milliseconds: 180) && step < 0.05) return;
+    _lastPoseAt = now;
+    _set(state.copyWith(cameraAr: cam, cameraForwardAr: forward, walkedM: walked));
+    unawaited(_updateResidency());
+  }
+
+  /// The tracker refined a board's anchor: refit, and watch for drift.
+  void _onAnchorUpdated(String anchorId, Vec3 posAr) {
+    final obsId = _anchorToObs[anchorId];
+    if (obsId == null) return;
+    final obs = [
+      for (final o in state.observations) o.id == obsId ? o.withAr(posAr) : o,
+    ];
+    _refit(obs, reason: _RefitReason.anchor);
+  }
+
+  // --------------------------------------------------------- observations
+
+  /// Adds (or replaces, by id) an observation and refits. Returns the fit.
+  AlignmentFit addObservation(ArObservation o, {String? anchorId}) {
+    final walked = state.walkedM;
+    final obs = [
+      for (final x in state.observations)
+        if (x.id != o.id) x.withDistanceSince(math.max(0, walked - state.walkedAtCheckM) + x.distanceSinceM),
+      o,
+    ];
+    if (anchorId != null) _anchorToObs[anchorId] = o.id;
+    _set(state.copyWith(walkedAtCheckM: walked));
+    final director = _director;
+    if (state.demo && director != null) {
+      // Stand where a person would to see it, facing it; the walk between
+      // sightings counts toward "checked 3 m ago".
+      final (cam, fwd) = director.cameraFor(o);
+      final prev = state.cameraAr;
+      final step = prev == null ? 0.0 : prev.distanceXzTo(cam);
+      _set(state.copyWith(cameraAr: cam, cameraForwardAr: fwd, walkedM: state.walkedM + step, walkedAtCheckM: state.walkedM + step));
+    }
+    return _refit(obs, reason: _RefitReason.observation);
+  }
+
+  /// Starts over: every observation and nudge dropped ("Re-align").
+  void resetAlignment() {
+    _anchorToObs.clear();
+    _lockedResidualM = null;
+    _set(ArSessionState(
+      phase: state.phase,
+      stage: ArSessionStage.setup,
+      args: state.args,
+      demo: state.demo,
+      capabilities: state.capabilities,
+      floor: state.floor,
+      plan: state.plan,
+      features: state.features,
+      download: state.download,
+      tracking: state.tracking,
+      cameraAr: state.cameraAr,
+      cameraForwardAr: state.cameraForwardAr,
+      walkedM: state.walkedM,
+      target: state.target,
+      gridVisible: state.gridVisible,
+    ));
+  }
+
+  AlignmentFit _refit(List<ArObservation> obs, {required _RefitReason reason}) {
+    final before = state.fit;
+    final nudgeAr = (state.nudgeM != 0 && state.nudgeAxisAr != null) ? state.nudgeAxisAr! * state.nudgeM : null;
+    var fit = obs.isEmpty ? AlignmentFit.none() : _estimator.fit(obs, nudgeAr: nudgeAr);
+
+    if (reason == _RefitReason.anchor && _lockedResidualM != null && fit.quality == AlignmentQuality.locked) {
+      // Runtime drift check: the anchors moved apart since the lock.
+      final growth = fit.maxResidualM - _lockedResidualM!;
+      if (growth > 0.03) {
+        fit = fit.withQuality(AlignmentQuality.drifting);
+        _set(state.copyWith(driftM: growth));
+        toast('ar.toast.drifting', args: [(growth * 100).round()], tone: ArToastTone.warning);
+      }
+    }
+
+    if (fit.quality == AlignmentQuality.locked) {
+      _lockedResidualM ??= fit.maxResidualM;
+    }
+    if (fit.outliers.isNotEmpty && (before?.outliers.length ?? 0) < fit.outliers.length) {
+      toast('ar.toast.outlier_dropped', args: [fit.outliers.last], tone: ArToastTone.warning);
+    }
+
+    _set(state.copyWith(observations: obs, fit: fit));
+    unawaited(_pushTransform(fit, ease: before?.isPlaced ?? false));
+    if (fit.quality == AlignmentQuality.locked && !_reportedLock) {
+      _reportedLock = true;
+      unawaited(_reportAlignment());
+    }
+    unawaited(_updateResidency(force: before?.isPlaced != true));
+    return fit;
+  }
+
+  Future<void> _pushTransform(AlignmentFit fit, {required bool ease}) async {
+    final e = _engine;
+    if (e == null || !fit.isPlaced) return;
+    try {
+      // Re-alignment eases in and never snaps (§4.3).
+      await e.setModelTransform(fit.arFromTile, easeMs: ease ? 300 : 0);
+    } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------- nudge
+
+  /// Starts a guided nudge. The axis follows where the user stands (§2.6):
+  /// facing along a wall, the model moves only toward or away from it, i.e.
+  /// along the horizontal perpendicular of the view direction.
+  void beginNudge() {
+    final f = state.cameraForwardAr;
+    Vec3 axis;
+    if (f == null || Vec2(f.x, f.z).length < 1e-3) {
+      // No pose yet: nudge across the first observation's wall/face.
+      axis = _fallbackNudgeAxis();
+    } else {
+      final h = Vec2(f.x, f.z).normalized;
+      axis = Vec3(-h.y, 0, h.x);
+    }
+    _set(state.copyWith(nudgeAxisAr: axis));
+  }
+
+  Vec3 _fallbackNudgeAxis() {
+    for (final o in state.observations) {
+      if (o is MarkerObs) return Vec3(o.normalAr.x, 0, o.normalAr.z).normalized;
+      if (o is CornerObs) return Vec3(o.faceAAr.x, 0, o.faceAAr.y).normalized;
+    }
+    return const Vec3(1, 0, 0);
+  }
+
+  /// One tap of − or + (5 mm per tap in the UI).
+  void nudgeBy(double deltaM) {
+    if (state.nudgeAxisAr == null) beginNudge();
+    final next = (state.nudgeM + deltaM).clamp(-0.5, 0.5).toDouble();
+    _set(state.copyWith(nudgeM: next));
+    _refit(state.observations, reason: _RefitReason.nudge);
+  }
+
+  void clearNudge() {
+    _set(state.copyWith(nudgeM: 0, clearNudgeAxis: true));
+    _refit(state.observations, reason: _RefitReason.nudge);
+  }
+
+  // -------------------------------------------------------------- stages
+
+  void enterWorkspace() {
+    _set(state.copyWith(stage: ArSessionStage.work));
+    if (state.demo) _armDemoDrift();
+  }
+
+  void backToSetup() => _set(state.copyWith(stage: ArSessionStage.setup));
+
+  /// Demo only: one honest drift after a minute of work, so the re-snap
+  /// prompt can be tried (the fake engine's own drift can't move the
+  /// director's synthetic anchors).
+  void _armDemoDrift() {
+    _demoDriftTimer?.cancel();
+    _demoDriftTimer = Timer(const Duration(seconds: 75), () {
+      if (_disposed || !state.isLocked || state.stage != ArSessionStage.work) return;
+      _set(state.copyWith(fit: state.fit!.withQuality(AlignmentQuality.drifting), driftM: 0.04));
+      toast('ar.toast.drifting', args: [4], tone: ArToastTone.warning);
+    });
+  }
+
+  // ---------------------------------------------------------------- tiles
+
+  /// Resident set = target tiles + tiles within 15 m of the camera, closest
+  /// first, within the triangle budget; 3 m hysteresis (§6.5).
+  Future<void> _updateResidency({bool force = false}) async {
+    final e = _engine;
+    final floor = state.floor;
+    if (e == null || floor == null || floor.tiles.isEmpty || _residencyBusy) return;
+    if (!state.download.focusReady && !state.download.done && !floor.fromCache) return;
+    final centre = state.cameraTile ?? _focusPoint();
+    if (centre == null) return;
+    final last = _residencyAtCamera;
+    final cam = state.cameraAr;
+    if (!force && last != null && cam != null && last.distanceXzTo(cam) < 2) return;
+    _residencyBusy = true;
+    try {
+      final pinned = _targetTileHashes();
+      final plan = _residency.plan(
+        cameraTile: centre,
+        tiles: floor.tiles,
+        loaded: Set<String>.of(_loadedTiles),
+        pinned: pinned,
+      );
+      if (plan.unload.isNotEmpty) {
+        await e.unloadTiles(plan.unload);
+        _loadedTiles.removeAll(plan.unload);
+      }
+      if (plan.load.isNotEmpty) {
+        // Only tiles already on the phone: the rest arrive with the download
+        // and the next residency pass picks them up.
+        final paths = await _gateway!.tilePaths(plan.load);
+        final refs = [for (final entry in paths.entries) makeTileRef(entry.key, entry.value)];
+        if (refs.isNotEmpty) {
+          await e.loadTiles(refs);
+          _loadedTiles.addAll(paths.keys);
+        }
+      }
+      _residencyAtCamera = state.cameraAr;
+    } catch (_) {
+      // A tile that fails to load is retried on the next move.
+    } finally {
+      _residencyBusy = false;
+    }
+  }
+
+  /// Before the model is placed: the focus board, else the target, else the
+  /// middle of the floor's tiles.
+  Vec3? _focusPoint() {
+    final floor = state.floor;
+    if (floor == null) return null;
+    final code = state.args?.focusCode;
+    if (code != null) {
+      final m = floor.markerByCode(code);
+      if (m != null) return m.posTile;
+    }
+    if (state.target != null) return state.target!.centre;
+    if (floor.corners.isNotEmpty) return floor.corners.first.posTile;
+    if (floor.tiles.isEmpty) return null;
+    return arTileCentre(floor.tiles.first);
+  }
+
+  Set<String> _targetTileHashes() => state.target?.tileHashes ?? const {};
+
+  // --------------------------------------------------------- engine calls
+
+  Future<void> setTargetFeature(ArFeature? f) async {
+    _set(f == null ? state.copyWith(clearTarget: true, targetOnScreen: false) : state.copyWith(target: f));
+    try {
+      // buildId: feature ids are dense per build, so the id alone would
+      // union the target's bounds with another build's namesake.
+      await _engine?.setTarget(f == null ? null : [f.featureId], buildId: f?.buildId);
+    } catch (_) {}
+    unawaited(_updateResidency(force: true));
+  }
+
+  Future<void> setLayers({
+    required bool mep,
+    required bool structure,
+    required bool architecture,
+    required double opacity,
+    double? sectionY,
+  }) async {
+    try {
+      await _engine?.setLayers(makeLayerState(
+        mep: mep,
+        structure: structure,
+        architecture: architecture,
+        opacity: opacity,
+        sectionY: sectionY,
+      ));
+    } catch (_) {}
+  }
+
+  /// One build's feature-state texture ([buildId] scopes it; see
+  /// [ArEngine.setFeatureState]).
+  Future<void> setFeatureState(Uint8List rgba, int width, {String? buildId}) async {
+    try {
+      await _engine?.setFeatureState(rgba, width, buildId: buildId);
+    } catch (_) {}
+  }
+
+  Future<void> setGridVisible(bool visible) async {
+    _set(state.copyWith(gridVisible: visible));
+    await _pushGridLines();
+  }
+
+  Future<void> _pushGridLines() async {
+    final floor = state.floor;
+    final e = _engine;
+    if (floor == null || e == null) return;
+    try {
+      await e.setGridLines(
+        state.gridVisible ? [for (final g in floor.gridLines) makeGridLineRef(g)] : const [],
+        floor.floorDatumY + floor.floorFinishOffsetM,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> setPins(List<ArPinSpec> pins) async {
+    try {
+      await _engine?.setPins([for (final p in pins) makePin(p)]);
+    } catch (_) {}
+  }
+
+  /// A tap in the view → the element under it, or null. View pixels.
+  Future<ArPickHit?> pick(double x, double y) async {
+    final e = _engine;
+    if (e == null) return null;
+    try {
+      final r = await e.pick(x, y);
+      if (r == null) return null;
+      return readPick(r);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A snap request at a view point in pixels (the pin in the middle).
+  Future<DetectedCorner?> detectCornerAt(double x, double y) async {
+    final e = _engine;
+    if (e == null || state.demo) return null;
+    try {
+      final seen = await e.detectCornerAt(x, y);
+      return seen == null ? null : DetectedCorner.fromSeen(seen);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A screenshot with the overlay, for snags and verification.
+  Future<String?> capture() async {
+    try {
+      return await _engine?.capture();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> pause() async {
+    _set(state.copyWith(paused: true));
+    try {
+      await _engine?.pause();
+    } catch (_) {}
+  }
+
+  Future<void> resume() async {
+    _set(state.copyWith(paused: false));
+    try {
+      await _engine?.resume();
+    } catch (_) {}
+  }
+
+  // ------------------------------------------------------------- telemetry
+
+  Future<void> _reportAlignment() async {
+    final floor = state.floor;
+    final fit = state.fit;
+    final g = _gateway;
+    if (floor == null || fit == null || g == null || !fit.isPlaced) return;
+    final caps = state.capabilities;
+    final tier = state.demo ? 'demo' : (caps?.tier ?? 'B');
+    final report = ArAlignmentReport(
+      buildingId: floor.buildingId,
+      floorId: floor.floorId,
+      buildIds: floor.builds.map((b) => b.buildId).toList(),
+      observations: [
+        for (final o in state.observations)
+          {
+            'kind': o.kind,
+            'ref': o.id,
+            'residualMm': ((fit.residualsM[o.id] ?? 0) * 1000).roundToDouble(),
+            // Health's "adopt the new position" needs where each board
+            // actually is according to this session's fit.
+            if (o.kind == 'marker') 'posTile': fit.arToTile(o.aAr).toList(),
+          },
+      ],
+      maxResidualMm: (fit.maxResidualM * 1000).roundToDouble(),
+      method: fit.method,
+      quality: fit.quality.name,
+      distanceWalkedM: state.walkedM,
+      deviceTier: tier,
+      capturedAt: DateTime.now(),
+    );
+    try {
+      await g.postAlignmentEvents([report]);
+    } catch (_) {
+      // Telemetry never interrupts the technician.
+    }
+  }
+
+  Future<void> _stopEngine() async {
+    await _events?.cancel();
+    _events = null;
+    _demoDriftTimer?.cancel();
+    final e = _engine;
+    _engine = null;
+    if (e != null) {
+      try {
+        await e.stop();
+      } catch (_) {}
+    }
+  }
+
+  void _teardown() {
+    _disposed = true;
+    // A session that got placed reports its final state once more on exit
+    // (the lock report above may have been before later observations).
+    if (state.isPlaced && state.observations.isNotEmpty) unawaited(_reportAlignment());
+    unawaited(_stopEngine());
+  }
+}
+
+enum _RefitReason { observation, anchor, nudge }
+
+/// Error → an `ar.error.*` key with a next step on screen.
+String arErrorKey(Object e) {
+  final s = e.toString().toLowerCase();
+  if (s.contains('offline') || s.contains('network') || s.contains('socket') || s.contains('timeout')) {
+    return 'ar.error.offline';
+  }
+  if (s.contains('no_published_build') || s.contains('409')) return 'ar.error.no_build';
+  if (s.contains('403') || s.contains('no_access')) return 'ar.error.no_access';
+  if (s.contains('404')) return 'ar.error.not_found';
+  return 'ar.error.generic';
+}
+
+final arSessionProvider = NotifierProvider.autoDispose<ArSessionController, ArSessionState>(
+  ArSessionController.new,
+);

@@ -482,13 +482,174 @@ abstract interface class SnagStore {
   Future<Set<String>> pendingEntityIds(String entityType);
 }
 
+/// An AR floor pack's manifest as stored (docs/ar-bim-overlay.md §6.8,
+/// CONTRACT C8). [json] is the manifest exactly as the server sent it, so a
+/// read-back parses what was received; [etag] is sent back as
+/// `If-None-Match` so an unchanged floor costs one 304.
+class StoredArManifest {
+  const StoredArManifest({
+    required this.scopeId,
+    required this.json,
+    required this.savedAt,
+    this.scope = 'floor',
+    this.buildingId,
+    this.etag,
+    this.tileHashes = const [],
+    this.meta = const {},
+  });
+
+  /// `floor` today; the route-pack scopes (`package`, `system`, …) later.
+  final String scope;
+  final String scopeId;
+  final String? buildingId;
+  final String? etag;
+  final Map<String, dynamic> json;
+
+  /// Local context the manifest doesn't carry (building name, the focus
+  /// board), so an offline resolve can still say "Tower A · Level 3".
+  final Map<String, dynamic> meta;
+
+  /// Every tile hash the manifest references — what tile GC keeps.
+  final List<String> tileHashes;
+  final DateTime savedAt;
+
+  factory StoredArManifest.fromRow(Map<String, Object?> row) => StoredArManifest(
+    scope: row['scope'] as String,
+    scopeId: row['scope_id'] as String,
+    buildingId: row['building_id'] as String?,
+    etag: row['etag'] as String?,
+    tileHashes: List<String>.from(jsonDecode(row['tile_hashes'] as String) as List),
+    json: Map<String, dynamic>.from(jsonDecode(row['json'] as String) as Map),
+    meta: row['meta'] == null
+        ? const {}
+        : Map<String, dynamic>.from(jsonDecode(row['meta'] as String) as Map),
+    savedAt: DateTime.fromMillisecondsSinceEpoch(row['saved_at'] as int),
+  );
+
+  Map<String, Object?> toRow() => {
+    'scope': scope,
+    'scope_id': scopeId,
+    'building_id': buildingId,
+    'etag': etag,
+    'tile_hashes': jsonEncode(tileHashes),
+    'json': jsonEncode(json),
+    'meta': jsonEncode(meta),
+    'saved_at': savedAt.millisecondsSinceEpoch,
+  };
+}
+
+/// A tile file on disk. The GLB lives at [path], never in a row (a 2 MB
+/// base64 blob per row is what already costs the Sync Center an O(n²)
+/// decode, improvements.md #12). Tiles are content-addressed and shared
+/// across manifests: two floors that reference one tile store it once.
+class StoredArTile {
+  const StoredArTile({
+    required this.hash,
+    required this.path,
+    required this.bytes,
+    required this.lastUsedAt,
+  });
+
+  final String hash;
+  final String path;
+  final int bytes;
+
+  /// For least-recently-used GC when the tile store is over its cap.
+  final DateTime lastUsedAt;
+
+  factory StoredArTile.fromRow(Map<String, Object?> row) => StoredArTile(
+    hash: row['hash'] as String,
+    path: row['path'] as String,
+    bytes: row['bytes'] as int? ?? 0,
+    lastUsedAt: DateTime.fromMillisecondsSinceEpoch(row['last_used_at'] as int),
+  );
+
+  Map<String, Object?> toRow() => {
+    'hash': hash,
+    'path': path,
+    'bytes': bytes,
+    'last_used_at': lastUsedAt.millisecondsSinceEpoch,
+  };
+}
+
+/// The AR floor-pack store (schema v10), pulled out of [OfflineDb] so
+/// `ArRepository` can be tested with an in-memory fake. Rows are JSON maps
+/// in the server's shapes; `lib/domain/ar_models.dart` parses them.
+abstract interface class ArPackStore {
+  /// Saves a floor's manifest together with its markers, corners and grid
+  /// lines, replacing what the floor had, in one transaction. Markers bound
+  /// on this phone and not yet known to the server (`localOnly`) survive.
+  Future<void> saveArManifest(
+    StoredArManifest manifest, {
+    List<Map<String, dynamic>> markers = const [],
+    List<Map<String, dynamic>> corners = const [],
+    List<Map<String, dynamic>> gridLines = const [],
+  });
+  Future<StoredArManifest?> getArManifest(String scopeId, {String scope = 'floor'});
+  Future<List<StoredArManifest>> listArManifests();
+
+  /// Removes the manifest and its markers, corners, grid lines and
+  /// progress. Tile files are left for [ArPackStore.deleteArTiles] via GC,
+  /// because another floor may share them.
+  Future<void> deleteArManifest(String scopeId, {String scope = 'floor'});
+
+  Future<StoredArTile?> getArTile(String hash);
+  Future<List<StoredArTile>> listArTiles();
+  Future<void> upsertArTile(StoredArTile tile);
+  Future<void> touchArTiles(List<String> hashes, DateTime at);
+  Future<void> deleteArTiles(List<String> hashes);
+
+  Future<void> upsertArFeatures(String buildId, List<Map<String, dynamic>> features);
+  Future<List<Map<String, dynamic>>> listArFeatures(String buildId);
+
+  /// Features by GlobalId or register asset, across every stored build —
+  /// "Show in AR" from an asset or a work order starts here.
+  Future<List<Map<String, dynamic>>> findArFeatures({String? globalId, String? assetId});
+
+  /// Keyed by the marker's canonical `code`; `floorId`, `buildingId`,
+  /// `label` and `status` are read from the map for the index columns.
+  Future<void> upsertArMarker(Map<String, dynamic> marker, {bool localOnly = false});
+  Future<Map<String, dynamic>?> getArMarker(String code);
+  Future<List<Map<String, dynamic>>> listArMarkers({String? floorId, String? buildingId});
+
+  /// Drops a board bound on this phone that the server refused (bound
+  /// elsewhere first).
+  Future<void> deleteArMarker(String code);
+
+  Future<List<Map<String, dynamic>>> listArCorners(String floorId);
+  Future<List<Map<String, dynamic>>> listArGridLines(String floorId);
+
+  /// A local status change, written before the network (local-first, like
+  /// snags); [pending] marks it as ahead of the server.
+  Future<void> upsertArProgress(
+    String floorId,
+    List<Map<String, dynamic>> rows, {
+    required bool pending,
+  });
+
+  /// The server's statuses for a floor. With [keepPending], rows this phone
+  /// changed and hasn't synced yet are kept instead of overwritten.
+  Future<void> replaceArProgress(
+    String floorId,
+    List<Map<String, dynamic>> rows, {
+    bool keepPending = true,
+  });
+  Future<List<Map<String, dynamic>>> listArProgress(String floorId);
+
+  /// Small per-device AR settings ("remember my method for this floor").
+  /// A null [value] removes the key.
+  Future<String?> getArPref(String key);
+  Future<void> setArPref(String key, String? value);
+}
+
 class OfflineDb
     implements
         C2oAssetCache,
         TagIssueLog,
         VerificationDraftStore,
         RoutePackStore,
-        SnagStore {
+        SnagStore,
+        ArPackStore {
   OfflineDb._(this._db);
 
   static const _fileName = 'fusion_eco_offline.db';
@@ -501,7 +662,7 @@ class OfflineDb
     final db = await openDatabase(
       p.join(dir, _fileName),
       password: passphrase,
-      version: 9,
+      version: 10,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE pending_mutations (
@@ -555,6 +716,7 @@ class OfflineDb
         await db.execute(_createDraftsSql);
         await db.execute(_createRoutePacksSql);
         await _createSnagTables(db);
+        await _createArTables(db);
       },
       // v1 → v2: which order a queued write belongs to, for the Sync Center
       // list. Existing rows just come back with both columns null — they
@@ -567,6 +729,9 @@ class OfflineDb
       // the first migration exercised live against a populated queue).
       // v7 → v8: downloaded route packs (FR-5.1/SR-1).
       // v8 → v9: Snag Assistant local store (snags, snag_surveys).
+      // v9 → v10: AR floor packs (ar_manifests, ar_tiles, ar_features,
+      // ar_markers, ar_corners, ar_grid_lines, ar_progress, ar_prefs).
+      // New tables only, so every existing row reads back unchanged.
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await db.execute(
@@ -603,6 +768,9 @@ class OfflineDb
         }
         if (oldVersion < 9) {
           await _createSnagTables(db);
+        }
+        if (oldVersion < 10) {
+          await _createArTables(db);
         }
       },
     );
@@ -674,6 +842,93 @@ class OfflineDb
         local_only INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL,
         json TEXT NOT NULL
+      )
+    ''');
+  }
+
+  /// AR floor packs (schema v10, docs/ar-bim-overlay.md §6.8). Tile bytes are
+  /// files on disk (`<appSupport>/ar/tiles/<hash>.glb`); `ar_tiles` only
+  /// indexes them.
+  static Future<void> _createArTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE ar_manifests (
+        scope TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        building_id TEXT,
+        etag TEXT,
+        tile_hashes TEXT NOT NULL,
+        json TEXT NOT NULL,
+        meta TEXT,
+        saved_at INTEGER NOT NULL,
+        PRIMARY KEY (scope, scope_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE ar_tiles (
+        hash TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        bytes INTEGER NOT NULL,
+        last_used_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE ar_features (
+        build_id TEXT NOT NULL,
+        feature_id INTEGER NOT NULL,
+        global_id TEXT NOT NULL,
+        asset_id TEXT,
+        floor_id TEXT,
+        json TEXT NOT NULL,
+        PRIMARY KEY (build_id, feature_id)
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_ar_features_global ON ar_features (global_id)');
+    await db.execute('CREATE INDEX idx_ar_features_asset ON ar_features (asset_id)');
+    await db.execute('''
+      CREATE TABLE ar_markers (
+        code TEXT PRIMARY KEY,
+        building_id TEXT,
+        floor_id TEXT,
+        label TEXT,
+        status TEXT,
+        local_only INTEGER NOT NULL DEFAULT 0,
+        json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_ar_markers_floor ON ar_markers (floor_id)');
+    await db.execute('''
+      CREATE TABLE ar_corners (
+        floor_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        json TEXT NOT NULL,
+        PRIMARY KEY (floor_id, id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE ar_grid_lines (
+        floor_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        name TEXT,
+        json TEXT NOT NULL,
+        PRIMARY KEY (floor_id, seq)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE ar_progress (
+        floor_id TEXT NOT NULL,
+        global_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        pending INTEGER NOT NULL DEFAULT 0,
+        json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (floor_id, global_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE ar_prefs (
+        key TEXT PRIMARY KEY,
+        value TEXT
       )
     ''');
   }
@@ -1042,6 +1297,331 @@ class OfflineDb
     return rows.map((r) => r['entity_id'] as String).toSet();
   }
 
+  // ---------------------------------------------------------------- AR packs
+
+  static Map<String, dynamic> _jsonColumn(Map<String, Object?> row) =>
+      Map<String, dynamic>.from(jsonDecode(row['json'] as String) as Map);
+
+  @override
+  Future<void> saveArManifest(
+    StoredArManifest manifest, {
+    List<Map<String, dynamic>> markers = const [],
+    List<Map<String, dynamic>> corners = const [],
+    List<Map<String, dynamic>> gridLines = const [],
+  }) => _db.transaction((txn) async {
+    final floorId = manifest.scopeId;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await txn.insert(
+      'ar_manifests',
+      manifest.toRow(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+
+    await txn.delete('ar_corners', where: 'floor_id = ?', whereArgs: [floorId]);
+    for (final c in corners) {
+      final id = c['id']?.toString();
+      if (id == null || id.isEmpty) continue;
+      await txn.insert('ar_corners', {
+        'floor_id': floorId,
+        'id': id,
+        'json': jsonEncode(c),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+
+    await txn.delete('ar_grid_lines', where: 'floor_id = ?', whereArgs: [floorId]);
+    for (var i = 0; i < gridLines.length; i++) {
+      await txn.insert('ar_grid_lines', {
+        'floor_id': floorId,
+        'seq': i,
+        'name': gridLines[i]['name']?.toString(),
+        'json': jsonEncode(gridLines[i]),
+      });
+    }
+
+    // Server-known boards on this floor are replaced wholesale (a retired
+    // one disappears); a spare bound on this phone and still queued stays.
+    await txn.delete(
+      'ar_markers',
+      where: 'floor_id = ? AND local_only = 0',
+      whereArgs: [floorId],
+    );
+    for (final m in markers) {
+      final code = m['code']?.toString();
+      if (code == null || code.isEmpty) continue;
+      final json = {
+        ...m,
+        'floorId': m['floorId'] ?? floorId,
+        'buildingId': m['buildingId'] ?? manifest.buildingId,
+      };
+      await txn.insert('ar_markers', {
+        'code': code,
+        'building_id': json['buildingId']?.toString(),
+        'floor_id': json['floorId']?.toString(),
+        'label': m['label']?.toString(),
+        'status': m['status']?.toString(),
+        'local_only': 0,
+        'json': jsonEncode(json),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  });
+
+  @override
+  Future<StoredArManifest?> getArManifest(String scopeId, {String scope = 'floor'}) async {
+    final rows = await _db.query(
+      'ar_manifests',
+      where: 'scope = ? AND scope_id = ?',
+      whereArgs: [scope, scopeId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : StoredArManifest.fromRow(rows.first);
+  }
+
+  @override
+  Future<List<StoredArManifest>> listArManifests() async {
+    final rows = await _db.query('ar_manifests', orderBy: 'saved_at DESC');
+    return rows.map(StoredArManifest.fromRow).toList();
+  }
+
+  @override
+  Future<void> deleteArManifest(String scopeId, {String scope = 'floor'}) =>
+      _db.transaction((txn) async {
+        await txn.delete(
+          'ar_manifests',
+          where: 'scope = ? AND scope_id = ?',
+          whereArgs: [scope, scopeId],
+        );
+        if (scope != 'floor') return;
+        await txn.delete('ar_corners', where: 'floor_id = ?', whereArgs: [scopeId]);
+        await txn.delete('ar_grid_lines', where: 'floor_id = ?', whereArgs: [scopeId]);
+        await txn.delete(
+          'ar_markers',
+          where: 'floor_id = ? AND local_only = 0',
+          whereArgs: [scopeId],
+        );
+        await txn.delete(
+          'ar_progress',
+          where: 'floor_id = ? AND pending = 0',
+          whereArgs: [scopeId],
+        );
+      });
+
+  @override
+  Future<StoredArTile?> getArTile(String hash) async {
+    final rows = await _db.query('ar_tiles', where: 'hash = ?', whereArgs: [hash], limit: 1);
+    return rows.isEmpty ? null : StoredArTile.fromRow(rows.first);
+  }
+
+  @override
+  Future<List<StoredArTile>> listArTiles() async {
+    final rows = await _db.query('ar_tiles', orderBy: 'last_used_at ASC');
+    return rows.map(StoredArTile.fromRow).toList();
+  }
+
+  @override
+  Future<void> upsertArTile(StoredArTile tile) => _db.insert(
+    'ar_tiles',
+    tile.toRow(),
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+
+  @override
+  Future<void> touchArTiles(List<String> hashes, DateTime at) async {
+    if (hashes.isEmpty) return;
+    final batch = _db.batch();
+    for (final h in hashes) {
+      batch.update(
+        'ar_tiles',
+        {'last_used_at': at.millisecondsSinceEpoch},
+        where: 'hash = ?',
+        whereArgs: [h],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  @override
+  Future<void> deleteArTiles(List<String> hashes) async {
+    if (hashes.isEmpty) return;
+    final batch = _db.batch();
+    for (final h in hashes) {
+      batch.delete('ar_tiles', where: 'hash = ?', whereArgs: [h]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  @override
+  Future<void> upsertArFeatures(String buildId, List<Map<String, dynamic>> features) async {
+    if (features.isEmpty) return;
+    final batch = _db.batch();
+    for (final f in features) {
+      final featureId = f['featureId'];
+      final globalId = f['globalId']?.toString();
+      final id = featureId is num ? featureId.toInt() : int.tryParse('$featureId');
+      if (id == null || globalId == null || globalId.isEmpty) continue;
+      batch.insert('ar_features', {
+        'build_id': buildId,
+        'feature_id': id,
+        'global_id': globalId,
+        'asset_id': f['assetId']?.toString(),
+        'floor_id': f['floorId']?.toString(),
+        'json': jsonEncode({...f, 'buildId': buildId}),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArFeatures(String buildId) async {
+    final rows = await _db.query(
+      'ar_features',
+      where: 'build_id = ?',
+      whereArgs: [buildId],
+      orderBy: 'feature_id ASC',
+    );
+    return rows.map(_jsonColumn).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> findArFeatures({String? globalId, String? assetId}) async {
+    if (globalId == null && assetId == null) return const [];
+    final rows = await _db.query(
+      'ar_features',
+      where: globalId != null ? 'global_id = ?' : 'asset_id = ?',
+      whereArgs: [globalId ?? assetId],
+    );
+    return rows.map(_jsonColumn).toList();
+  }
+
+  @override
+  Future<void> upsertArMarker(Map<String, dynamic> marker, {bool localOnly = false}) async {
+    final code = marker['code']?.toString();
+    if (code == null || code.isEmpty) return;
+    await _db.insert('ar_markers', {
+      'code': code,
+      'building_id': marker['buildingId']?.toString(),
+      'floor_id': marker['floorId']?.toString(),
+      'label': marker['label']?.toString(),
+      'status': marker['status']?.toString(),
+      'local_only': localOnly ? 1 : 0,
+      'json': jsonEncode(marker),
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getArMarker(String code) async {
+    final rows = await _db.query('ar_markers', where: 'code = ?', whereArgs: [code], limit: 1);
+    return rows.isEmpty ? null : _jsonColumn(rows.first);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArMarkers({String? floorId, String? buildingId}) async {
+    final rows = floorId != null
+        ? await _db.query('ar_markers', where: 'floor_id = ?', whereArgs: [floorId], orderBy: 'label ASC')
+        : buildingId != null
+            ? await _db.query('ar_markers', where: 'building_id = ?', whereArgs: [buildingId], orderBy: 'label ASC')
+            : await _db.query('ar_markers', orderBy: 'label ASC');
+    return rows.map(_jsonColumn).toList();
+  }
+
+  @override
+  Future<void> deleteArMarker(String code) =>
+      _db.delete('ar_markers', where: 'code = ?', whereArgs: [code]);
+
+  @override
+  Future<List<Map<String, dynamic>>> listArCorners(String floorId) async {
+    final rows = await _db.query('ar_corners', where: 'floor_id = ?', whereArgs: [floorId]);
+    return rows.map(_jsonColumn).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> listArGridLines(String floorId) async {
+    final rows = await _db.query(
+      'ar_grid_lines',
+      where: 'floor_id = ?',
+      whereArgs: [floorId],
+      orderBy: 'seq ASC',
+    );
+    return rows.map(_jsonColumn).toList();
+  }
+
+  @override
+  Future<void> upsertArProgress(
+    String floorId,
+    List<Map<String, dynamic>> rows, {
+    required bool pending,
+  }) async {
+    if (rows.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = _db.batch();
+    for (final r in rows) {
+      final globalId = r['globalId']?.toString();
+      if (globalId == null || globalId.isEmpty) continue;
+      batch.insert('ar_progress', {
+        'floor_id': floorId,
+        'global_id': globalId,
+        'status': r['status']?.toString() ?? 'not_started',
+        'pending': pending ? 1 : 0,
+        'json': jsonEncode({...r, 'pending': pending}),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  @override
+  Future<void> replaceArProgress(
+    String floorId,
+    List<Map<String, dynamic>> rows, {
+    bool keepPending = true,
+  }) => _db.transaction((txn) async {
+    await txn.delete(
+      'ar_progress',
+      where: keepPending ? 'floor_id = ? AND pending = 0' : 'floor_id = ?',
+      whereArgs: [floorId],
+    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final r in rows) {
+      final globalId = r['globalId']?.toString();
+      if (globalId == null || globalId.isEmpty) continue;
+      // `ignore`: a pending local row with the same key is ahead of the
+      // server and wins until its write has synced.
+      await txn.insert('ar_progress', {
+        'floor_id': floorId,
+        'global_id': globalId,
+        'status': r['status']?.toString() ?? 'not_started',
+        'pending': 0,
+        'json': jsonEncode({...r, 'pending': false}),
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  });
+
+  @override
+  Future<List<Map<String, dynamic>>> listArProgress(String floorId) async {
+    final rows = await _db.query('ar_progress', where: 'floor_id = ?', whereArgs: [floorId]);
+    return rows.map(_jsonColumn).toList();
+  }
+
+  @override
+  Future<String?> getArPref(String key) async {
+    final rows = await _db.query('ar_prefs', where: 'key = ?', whereArgs: [key], limit: 1);
+    return rows.isEmpty ? null : rows.first['value'] as String?;
+  }
+
+  @override
+  Future<void> setArPref(String key, String? value) async {
+    if (value == null) {
+      await _db.delete('ar_prefs', where: 'key = ?', whereArgs: [key]);
+      return;
+    }
+    await _db.insert('ar_prefs', {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<void> wipe() async {
     await _db.delete('pending_mutations');
     await _db.delete('cached_entities');
@@ -1053,5 +1633,15 @@ class OfflineDb
     await _db.delete('route_packs');
     await _db.delete('snags');
     await _db.delete('snag_surveys');
+    // AR packs: tile *files* stay on disk; the next download re-adopts any
+    // whose bytes still hash to their name instead of fetching them again.
+    await _db.delete('ar_manifests');
+    await _db.delete('ar_tiles');
+    await _db.delete('ar_features');
+    await _db.delete('ar_markers');
+    await _db.delete('ar_corners');
+    await _db.delete('ar_grid_lines');
+    await _db.delete('ar_progress');
+    await _db.delete('ar_prefs');
   }
 }

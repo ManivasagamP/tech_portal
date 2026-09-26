@@ -120,6 +120,12 @@ String? _routeForPushData({
   if (title == 'New assignment invite') return Routes.invites;
   if (entityType == 'Inspection') return Routes.inspectionDetail(entityId);
   if (entityType == 'Snag') return Routes.snagDetail(entityId);
+  // AR install request: the link `/technician/ar/install?floorId=<id>` maps
+  // through the prefix strip above; a link-less one names the floor. The
+  // server stamps `ar_install_request` (installRequestService.ts).
+  if (entityType == 'ar_install_request' || entityType == 'ArInstallRequest') {
+    return Routes.arInstall(floorId: entityId);
+  }
 
   final slug = switch (entityType) {
     'WorkOrder' => 'work-order',

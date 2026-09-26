@@ -1,0 +1,5 @@
+# build outputs
+android/.cxx/
+android/build/
+build/
+.dart_tool/

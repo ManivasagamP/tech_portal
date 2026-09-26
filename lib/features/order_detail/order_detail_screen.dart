@@ -18,6 +18,7 @@ import '../../theme/fe_colors.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/photo_viewer.dart';
+import '../ar/widgets/ar_entry_widgets.dart';
 import 'checklist_item_sheet.dart' show SignatureImageAndCaption;
 import 'checklist_tab.dart';
 import 'detail_widgets.dart';
@@ -422,6 +423,21 @@ class _DetailsTab extends ConsumerWidget {
                     // ),
                   ],
                 ),
+                // AR Locate (docs/ar-bim-overlay.md §1.1): the job's asset
+                // drawn where it really is, with this order on top. The AR
+                // screens find the asset's floor; only a work order's id rides
+                // along (the AR Forms mode opens its checklist).
+                if (record.assetId != null) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ShowInArButton(
+                      assetId: record.assetId,
+                      workOrderId: record.type == OrderType.workOrder ? record.id : null,
+                      compact: true,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

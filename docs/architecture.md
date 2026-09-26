@@ -116,7 +116,7 @@ A 2xx whose body carries `captureConflict` (FR-4.8) is recorded as a **non-dropp
 
 ### Local database
 
-[OfflineDb.open](../lib/core/offline/offline_db.dart#L451) opens `fusion_eco_offline.db` (SQLCipher) at **schema version 9**:
+[OfflineDb.open](../lib/core/offline/offline_db.dart#L660) opens `fusion_eco_offline.db` (SQLCipher) at **schema version 10**:
 
 | Table | Holds |
 |---|---|
@@ -130,6 +130,13 @@ A 2xx whose body carries `captureConflict` (FR-4.8) is recorded as a **non-dropp
 | `route_packs` | downloaded route packs (FR-5.1, SR-2 stamp) |
 | `snags` | Snag Assistant local store: the whole snag as JSON, plus `building_id`, `survey_id`, `status`, `local_only`. Written **before** any network call ([docs/snag-assistant.md §6](snag-assistant.md#6-app-architecture)) |
 | `snag_surveys` | Snag walks and surveys, including room sweeps (coverage) |
+| `ar_manifests` | AR floor packs (v10): the manifest JSON as received, its ETag, the tile hashes it references, and local meta (building name, focus board). Keyed on `(scope, scope_id)` |
+| `ar_tiles` | index of tile GLB **files** (`<appSupport>/ar/tiles/<sha256>.glb`): path, bytes, last used (LRU GC). Never the bytes themselves |
+| `ar_features` | feature rows per build (`featureId` → GlobalId, asset, bbox), indexed by GlobalId and asset for "Show in AR" |
+| `ar_markers` | boards per floor; `local_only = 1` for a spare bound on this phone and not yet confirmed (survives a pack refresh) |
+| `ar_corners`, `ar_grid_lines` | corner-snap candidates and structural grid lines per floor |
+| `ar_progress` | element progress per floor; `pending = 1` rows are ahead of the server and win over a refresh |
+| `ar_prefs` | small per-device AR settings: the Demo flag, the remembered setup method per floor |
 
 **Schema change rule:** bump `version`, add the DDL to `onCreate`, **and** add an `if (oldVersion < N)` step to `onUpgrade` (each step is commented with its FR). `PendingMutation.fromRow` still reads the pre-v6 single-attachment columns, so a queue captured on an old build survives the update. Keep that kind of back-compat for queued rows.
 
@@ -166,6 +173,7 @@ The server rejects every **mutating** request from a technician whose last GPS f
 - Five bottom-nav branches (`dashboard`, `overview`, `orders`, `invites`, `profile`) live in a `StatefulShellRoute.indexedStack`. **Switch to them with `context.go`, never `push`.** Pushing one reserves its branch navigator key twice and crashes with `!keyReservation.contains(key)` ([router.dart:108](../lib/app/router.dart#L108)).
 - Every other screen is a root-navigator route (`parentNavigatorKey: _rootKey`).
 - **Only serialisable strings cross the router.** Use path and query params built by the `Routes.*` helpers, never `extra`.
+- AR (2026-09-26): `/ar`, `/ar/marker/:code`, `/ar/session`, `/ar/install`, `/ar/install/:code` and `/ar/spare/:code` are root routes built by `Routes.ar*`. The session re-reads the floor pack itself, so only ids and codes travel. Table and params: [ar-implementation.md §4](ar-implementation.md#4-routes-and-entry-points-c9).
 - The auth redirect is driven by a `ValueNotifier` bumped only when `isAuthenticated` flips.
 
 ## i18n

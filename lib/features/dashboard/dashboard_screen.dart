@@ -15,6 +15,7 @@ import '../../state/providers.dart';
 import '../../theme/fe_colors.dart';
 import '../../widgets/app_text.dart';
 import '../snags/widgets/snag_dashboard_card.dart';
+import '../ar/widgets/ar_entry_widgets.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/order_card.dart';
@@ -133,6 +134,9 @@ class DashboardScreen extends ConsumerWidget {
               // Snag Assistant (docs/snag-assistant.md) — its own widget so
               // this screen only knows where the door is, not what's behind it.
               const SnagDashboardCard(),
+              const SizedBox(height: 12),
+              // AR BIM overlay: scan a board, open a floor, or an install run.
+              const ArDashboardCard(),
               const SizedBox(height: 22),
 
               // Section Title: "Today's Active Tasks"

@@ -13,6 +13,7 @@ import 'package:vibration/vibration.dart';
 
 import '../../app/env.dart';
 import '../../app/router.dart';
+import '../../core/ar/marker_code.dart';
 import '../../core/c2o/c2o_asset_resolver.dart';
 import '../../core/c2o/route_pack.dart';
 import '../../core/utils/qr_payload.dart';
@@ -133,6 +134,22 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       if (mounted) setState(() => _lastScanned = null);
     });
 
+    // AR boards (docs/ar-markers-and-qr.md §5.1) come before C2O and the
+    // general scheme: `HTTPS://<host>/M/<code>` opens the board's floor and
+    // model. URL form only here — a bare 7-character plate passes the check
+    // character by chance 1 time in 32, so bare codes are tried last, below,
+    // after nothing else has claimed the value.
+    final markerCode = MarkerCode.fromScan(raw, allowBare: false);
+    if (markerCode != null) {
+      await _buzz();
+      if (!mounted) return;
+      setState(() => _processing = false);
+      // Replace, not push: back from the board sheet goes where the scan
+      // came from, and the scanner can't re-read the same board behind it.
+      context.pushReplacement(Routes.arMarker(markerCode));
+      return;
+    }
+
     // c2o tags are checked first — offline, against the local cache — before
     // falling through to the general scheme, which currently only ever opens
     // a web page and so cannot answer with the radio off (see FR-1.1).
@@ -184,6 +201,13 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
           await launchUrl(Uri.parse(value), mode: LaunchMode.externalApplication);
           if (mounted) _toast('scanner.opened_in_browser'.getString(context));
         } else {
+          // A board's code typed or printed on its own ("7K3QX9-R"): only
+          // now, after the C2O and general schemes passed on it.
+          final bareMarker = MarkerCode.fromScan(value);
+          if (bareMarker != null) {
+            context.pushReplacement(Routes.arMarker(bareMarker));
+            return;
+          }
           // Not a link and not ours — show the text and let the person read it.
           _toast(value);
         }

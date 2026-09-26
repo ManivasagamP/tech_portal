@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/ar/ar_marker_screen.dart';
+import '../features/ar/ar_models_screen.dart';
+import '../features/ar/ar_session_screen.dart';
+import '../features/ar/ar_spare_screen.dart';
+import '../features/ar/install/ar_install_guide_screen.dart';
+import '../features/ar/install/ar_install_list_screen.dart';
 import '../features/asset_detail/asset_detail_screen.dart';
 import '../features/c2o_search/c2o_asset_search_screen.dart';
 import '../features/calendar/calendar_screen.dart';
@@ -135,6 +141,69 @@ abstract final class Routes {
     };
     return Uri(path: '/verify/$assetId', queryParameters: query).toString();
   }
+
+  // AR BIM overlay (docs/ar-setup-and-gamma-parity.md, ar-markers-and-qr.md
+  // §5). Only strings cross the router: the session re-reads the floor pack
+  // itself. The server's install push link `/technician/ar/install?floorId=`
+  // maps onto [arInstall] through the usual `/technician` prefix strip.
+
+  /// Building → floor → tick the models to show together. From an asset or
+  /// a work order only [assetId] is known; the screen finds the floor.
+  static String arModels({String? buildingId, String? floorId, String? assetId, String? workOrderId}) {
+    final query = <String, String>{
+      'buildingId': ?buildingId,
+      'floorId': ?floorId,
+      'assetId': ?assetId,
+      'workOrderId': ?workOrderId,
+    };
+    return Uri(path: '/ar', queryParameters: query.isEmpty ? null : query).toString();
+  }
+
+  /// A scanned board (in-app scanner, App Link `/m/<code>`).
+  static String arMarker(String code) => '/ar/marker/${Uri.encodeComponent(code)}';
+
+  /// The AR session. [models] are the ticked lineages; [focus] is the board
+  /// that opened it; [install] runs the installer's self-check for that code.
+  static String arSession({
+    required String floorId,
+    String? method,
+    String? targetGlobalId,
+    String? assetId,
+    String? workOrderId,
+    String? focus,
+    List<String>? models,
+    String? space,
+    String? install,
+  }) {
+    final query = <String, String>{
+      'floorId': floorId,
+      'method': ?method,
+      'targetGlobalId': ?targetGlobalId,
+      'assetId': ?assetId,
+      'workOrderId': ?workOrderId,
+      'focus': ?focus,
+      if (models != null && models.isNotEmpty) 'models': models.join(','),
+      'space': ?space,
+      'install': ?install,
+    };
+    return Uri(path: '/ar/session', queryParameters: query).toString();
+  }
+
+  /// The installer's list for a floor (push link target).
+  static String arInstall({String? floorId}) =>
+      Uri(path: '/ar/install', queryParameters: floorId == null ? null : {'floorId': floorId}).toString();
+
+  /// One stop: find the spot, then the self-check.
+  static String arInstallGuide(String code, {String? floorId}) => Uri(
+    path: '/ar/install/${Uri.encodeComponent(code)}',
+    queryParameters: floorId == null ? null : {'floorId': floorId},
+  ).toString();
+
+  /// A spare board scanned outside a session: register it here.
+  static String arSpare(String code, {String? floorId}) => Uri(
+    path: '/ar/spare/${Uri.encodeComponent(code)}',
+    queryParameters: floorId == null ? null : {'floorId': floorId},
+  ).toString();
 
   /// The built-in browser. The address is a query parameter rather than a path
   /// segment so slashes in it survive.
@@ -379,6 +448,64 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/snags/:id',
         parentNavigatorKey: _rootKey,
         builder: (context, state) => SnagDetailScreen(snagId: state.pathParameters['id'] ?? ''),
+      ),
+      // AR BIM overlay. The fixed segments stay above the `:code` routes.
+      GoRoute(
+        path: '/ar',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) {
+          final q = state.uri.queryParameters;
+          return ArModelsScreen(
+            buildingId: q['buildingId'],
+            floorId: q['floorId'],
+            assetId: q['assetId'],
+            workOrderId: q['workOrderId'],
+          );
+        },
+      ),
+      GoRoute(
+        path: '/ar/session',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) {
+          final q = state.uri.queryParameters;
+          return ArSessionScreen(
+            floorId: q['floorId'] ?? '',
+            method: q['method'],
+            targetGlobalId: q['targetGlobalId'],
+            assetId: q['assetId'],
+            workOrderId: q['workOrderId'],
+            focusCode: q['focus'],
+            models: (q['models'] ?? '').split(',').where((m) => m.isNotEmpty).toSet(),
+            spaceName: q['space'],
+            installCode: q['install'],
+          );
+        },
+      ),
+      GoRoute(
+        path: '/ar/install',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => ArInstallListScreen(floorId: state.uri.queryParameters['floorId']),
+      ),
+      GoRoute(
+        path: '/ar/install/:code',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => ArInstallGuideScreen(
+          code: state.pathParameters['code'] ?? '',
+          floorId: state.uri.queryParameters['floorId'],
+        ),
+      ),
+      GoRoute(
+        path: '/ar/marker/:code',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => ArMarkerScreen(code: state.pathParameters['code'] ?? ''),
+      ),
+      GoRoute(
+        path: '/ar/spare/:code',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => ArSpareScreen(
+          code: state.pathParameters['code'] ?? '',
+          floorId: state.uri.queryParameters['floorId'],
+        ),
       ),
       GoRoute(
         path: '/floor-plan/:floorId',

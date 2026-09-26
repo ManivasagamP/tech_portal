@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The AR camera. The app already declares it for photos and scanning;
+         repeated here so the plugin is self-describing. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- AR is ONE feature of a field app that must install on every
+         technician's phone: a device without ARCore gets the floor-plan
+         fallback (docs/ar-bim-overlay.md §6.7, tier C), never a store block. -->
+    <uses-feature
+        android:name="android.hardware.camera.ar"
+        android:required="false" />
+
+    <application>
+        <!-- "optional": Play doesn't install Google Play Services for AR
+             with the app; fe_ar asks for it the first time AR starts
+             (ArCoreApk.requestInstall in startSession). -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="optional" />
+    </application>
+</manifest>

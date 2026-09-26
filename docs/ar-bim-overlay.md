@@ -4,9 +4,11 @@ A technician in a plant room points the phone at a wall and sees the model drawn
 
 It is FieldOps' answer to GAMMA AR and Dalux TwinBIM. It is **not** a copy of them. Those products serve construction QA. FieldOps serves people who maintain and verify assets, so the design is built around what those people do, and it reuses the register, findings, route packs and offline queue the app already has.
 
-**Status:** planned. No code exists yet. This is **v3 (2026-09-25)**: v2's design plus the platform decision (§2.4), with **Android, iPhone and iPad as first-class targets**. §0 lists what v3 changed, then what v2 changed from v1 (commit `91e81ad`). Every "existing" reference below was read in source. Every "new" item is a development item in §11.
+**Status:** **v1 built 2026-09-26, never run on a device.** Server (`/api/bim/ar`), web admin and FieldOps (pure logic, floor packs, every screen with a Demo mode, and the native plugin `packages/fe_ar`) are written; FieldOps was statically verified only (type check on an old analyzer, 193 pure-Dart tests), and `fe_ar` has never been built for a device. What exists, how it connects and what is unverified: [ar-implementation.md](ar-implementation.md). The plan below is unchanged. This is **v3 (2026-09-25)**: v2's design plus the platform decision (§2.4), with **Android, iPhone and iPad as first-class targets**. §0 lists what v3 changed, then what v2 changed from v1 (commit `91e81ad`). Every "existing" reference below was read in source. Every "new" item is a development item in §11.
 
-**Prerequisite reading:** [architecture.md](architecture.md) (the offline engine this reuses) and [c2o-field-verification.md](c2o-field-verification.md) (register, route packs, capture form).
+**Update 2026-09-26:** the first alignment is now **markerless**. The user snaps two real corners, which is GAMMA AR's proven method, simplified, and QR boards are what gets left behind for one-scan repeat visits. See [ar-setup-and-gamma-parity.md](ar-setup-and-gamma-parity.md). The 4-DoF estimator below is unchanged; corners are just another kind of observation.
+
+**Prerequisite reading:** [architecture.md](architecture.md) (the offline engine this reuses) and [c2o-field-verification.md](c2o-field-verification.md) (register, route packs, capture form). Marker planning, printing, installing and scan-to-model resolution are specified end to end in [ar-markers-and-qr.md](ar-markers-and-qr.md).
 
 ---
 
@@ -176,11 +178,13 @@ Rules:
 
 ## 4. Alignment
 
+> **Setup order (2026-09-26):** scan a board if one is known → otherwise **snap two corners** → then **leave a board**. Corner detection, matching, drift re-snap and the guided nudge are in [ar-setup-and-gamma-parity.md §2](ar-setup-and-gamma-parity.md). This section's marker maths applies to both.
+
 ### 4.1 The marker
 
-- A rigid A4 board, matte. A 150–200 mm QR sits in the centre with a **crosshair at the registration point** (the QR centre), and a **high-texture border pattern** around it. The border matters: ARCore finds vertical planes by their visual features, and a plain painted wall has none. The board brings its own.
+- A rigid A4 board, matte: a 115 mm QR inside a 170 mm textured frame (A3 for large halls: 170 mm QR). A 200 mm QR plus a frame does not fit A4. The QR sits in the centre with a **crosshair at the registration point** (the QR centre), and a **high-texture border pattern** around it. The border matters: ARCore finds vertical planes by their visual features, and a plain painted wall has none. The board brings its own.
 - Mounted on a wall at about eye height. Walls give a clean normal. A floor marker works too, but its yaw has to come from the QR's corner orientation, which is weaker.
-- Payload: a URL on the web host, `https://<web>/public/ar-marker/<code>`, following the pattern of the existing tag URL `/public/c2o-verify/:id` ([c2o_scan_payload.dart:52](../lib/core/c2o/c2o_scan_payload.dart#L52)). A stranger's phone camera lands on a harmless page. The FieldOps scanner parses the URL **before** the general scheme and offers "Open AR here". The AR session parses it in-frame.
+- Payload: the upper-case short URL `HTTPS://<HOST>/M/<code>`. That keeps it in QR alphanumeric mode, version 2, 25 modules, so a 115 mm QR reads from about 2 m ([ar-markers-and-qr.md §2](ar-markers-and-qr.md)). A stranger's phone camera lands on a safe public page. The FieldOps scanner parses the URL **before** the C2O and general schemes ([c2o_scan_payload.dart:52](../lib/core/c2o/c2o_scan_payload.dart#L52)) and opens the right floor and build (§3 of that doc).
 - The code carries only an ID. The pose stays on the server, so a correction never means reprinting.
 
 ### 4.2 Observation: native measures
@@ -294,7 +298,9 @@ sequenceDiagram
   end
 ```
 
-### 4.7 Fallbacks when no marker is reachable (slice 3)
+### 4.7 Fallbacks when no marker is reachable
+
+**Superseded as the main path:** corner snap is now the first-class markerless method, in slice 1 ([ar-setup-and-gamma-parity.md §2](ar-setup-and-gamma-parity.md)). The two below remain last resorts for rooms with no usable corners.
 
 - **Two-point.** Tap a model point, walk to its real twin, confirm, twice. The same 4-DoF fit runs, with each point entered at the tap-precision weight.
 - **Floor snap plus nudge.** Snap the storey datum to the detected floor, which removes vertical error, then drag and rotate. Badged `manual`, so it can never be mistaken for a marker fit.
@@ -494,7 +500,7 @@ Tiles are **shared across manifests**: two route scopes that overlap store each 
 | `bim_tiles` | **Content-addressed** (hash is the key): URL, bytes, triangles, feature count. Shared across builds |
 | `bim_build_tiles` | build ↔ tile: storey, cell, layer, bounding box |
 | `bim_features` | build, featureId, GlobalId, `bimElementId`, bounding box, tile hashes, discipline, system |
-| `bim_ar_markers` | code (unique), model, building, storey, pose, normal, mounting, class, status, uncertainty, parent markers (for derived ones), placed by and when, photo, last residual |
+| `bim_ar_markers` | Superseded by the full schema in [ar-markers-and-qr.md §6.1](ar-markers-and-qr.md): pose stored in **project coordinates** (so it survives new builds), FusionEco `floorId`/`spaceId`, host element, label, status incl. spare and needs-review |
 | `ar_alignment_events` | per session: markers used, residuals, method, distance walked, outcome |
 
 ### 7.2 Endpoints
@@ -605,6 +611,8 @@ Standing constraint: this Mac can't run `flutter analyze` or `flutter test` (Flu
 
 ## 11. Delivery plan: vertical slices
 
+> **2026-09-26:** AR-39…AR-53 (corner snap, leave a board, nudge, re-snap, snags and issue pins in AR, progress tracking, system trace) and the slice moves they cause are listed in [ar-setup-and-gamma-parity.md §4](ar-setup-and-gamma-parity.md). The tables below are unchanged except where that list says so.
+
 Each slice ends with something a technician can use on site. Estimates are calendar weeks for **one Flutter/Android engineer, one iOS engineer (Swift, Metal) and one server engineer working in parallel**. With fewer people, each iOS item runs after its Android twin. Item IDs are stable across versions; v3 moved some items between slices and added AR-37, AR-38 and Track I.
 
 ```mermaid
@@ -642,7 +650,7 @@ Priority follows [improvements.md](improvements.md): **P1** blocks the slice · 
 | AR-7 | Tiling, layers, feature IDs, instancing, meshopt, content hashing | P1 | L | §9 tile budgets met; identical input gives identical hashes |
 | AR-8 | Build, tile and feature tables, and the QA gate (§5.6) with its web report | P1 | M | A deliberately wrong-unit IFC fails the gate |
 | AR-9 | BullMQ build job: one per version, resumable | P1 | M | A re-run is a no-op; a crashed job resumes |
-| AR-10 | Marker registry: CRUD, QR board PDF, web placement on the model, site confirm | P1 | L | A web-placed marker prints, scans to the same code and reads the same pose |
+| AR-10 | Marker registry, printing and installing: **replaced by MK-1…MK-20** in [ar-markers-and-qr.md §8](ar-markers-and-qr.md) (plan → print → install → scan all in slice 1) | P1 | L | See MK items |
 | AR-11 | Manifest (scope vocabulary, ETag/304), immutable tiles, feature endpoints | P1 | M | Second request with `If-None-Match` returns 304 |
 | AR-12 | Route-pack assets gain `ifcGlobalId`, `mappingConfidence`, `mappingMethod` | P1 | S | Old app builds unaffected |
 | AR-13 | `packages/fe_ar` Android: session, tile load/unload, transform, feature-state texture, layers, marker observations (§4.2), events; **contract frozen** | P1 | L | Survives rotation, backgrounding, tracking loss and low memory |
