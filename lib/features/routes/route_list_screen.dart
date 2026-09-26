@@ -214,6 +214,42 @@ class _AssignedRouteCardState extends ConsumerState<_AssignedRouteCard> {
         projectId: route.projectId,
       );
       if (!mounted) return;
+
+      // NFR-4 — an assigned route has no scope picker to narrow, so a pack
+      // over the device budget can't be fixed by the technician at all;
+      // the only honest option here is to block and point back at the
+      // admin who assigned it, not offer a "download anyway".
+      if (estimate.exceedsCap) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: AppText.title(
+              'routes.assigned_too_large_title'.getString(dialogContext),
+            ),
+            content: AppText.bodyMedium(
+              dialogContext.formatString(
+                'routes.assigned_too_large_message'.getString(dialogContext),
+                [
+                  estimate.assetCount,
+                  estimate.formattedSize,
+                  RoutePackEstimate.capBytes ~/ (1024 * 1024),
+                ],
+              ),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: AppText.label(
+                  'common.ok'.getString(dialogContext),
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -701,19 +737,28 @@ class _DownloadRouteSheetState extends ConsumerState<_DownloadRouteSheet> {
       _downloading = true;
       _error = null;
     });
+    final service = ref.read(routeDownloadServiceProvider);
+    final packageId = _packageId.text.trim().isEmpty ? null : _packageId.text.trim();
+    final projectId = _projectId.text.trim().isEmpty ? null : _projectId.text.trim();
     try {
-      await ref
-          .read(routeDownloadServiceProvider)
-          .download(
-            scope: _scope,
-            id: _id.text.trim(),
-            packageId: _packageId.text.trim().isEmpty
-                ? null
-                : _packageId.text.trim(),
-            projectId: _projectId.text.trim().isEmpty
-                ? null
-                : _projectId.text.trim(),
-          );
+      // NFR-4 — re-check size right before committing, not just whenever
+      // "Check size" was last tapped. Catches skipping straight to Download
+      // and catches the estimate going stale after editing scope/id/anchor.
+      final estimate = await service.estimate(
+        scope: _scope,
+        id: _id.text.trim(),
+        packageId: packageId,
+        projectId: projectId,
+      );
+      if (mounted) setState(() => _estimate = estimate);
+      if (estimate.exceedsCap) return;
+
+      await service.download(
+        scope: _scope,
+        id: _id.text.trim(),
+        packageId: packageId,
+        projectId: projectId,
+      );
       if (mounted) Navigator.of(context).pop(true);
     } on ApiFailure catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -798,13 +843,25 @@ class _DownloadRouteSheetState extends ConsumerState<_DownloadRouteSheet> {
           ],
           if (_estimate != null) ...[
             TechCard(
-              tint: FeColors.primary.withValues(alpha: 0.06),
+              tint: _estimate!.exceedsCap
+                  ? FeColors.danger.withValues(alpha: 0.08)
+                  : FeColors.primary.withValues(alpha: 0.06),
               child: AppText.bodyMedium(
-                context.formatString(
-                  'routes.estimate_result'.getString(context),
-                  [_estimate!.assetCount, _estimate!.formattedSize],
-                ),
+                _estimate!.exceedsCap
+                    ? context.formatString(
+                        'routes.estimate_too_large'.getString(context),
+                        [
+                          _estimate!.assetCount,
+                          _estimate!.formattedSize,
+                          RoutePackEstimate.capBytes ~/ (1024 * 1024),
+                        ],
+                      )
+                    : context.formatString(
+                        'routes.estimate_result'.getString(context),
+                        [_estimate!.assetCount, _estimate!.formattedSize],
+                      ),
                 weight: FontWeight.w600,
+                color: _estimate!.exceedsCap ? FeColors.danger : null,
               ),
             ),
             const SizedBox(height: 12),
@@ -828,7 +885,9 @@ class _DownloadRouteSheetState extends ConsumerState<_DownloadRouteSheet> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: busy || _id.text.trim().isEmpty ? null : _download,
+                  onPressed: busy || _id.text.trim().isEmpty || (_estimate?.exceedsCap ?? false)
+                      ? null
+                      : _download,
                   child: _downloading
                       ? const SizedBox(
                           height: 16,

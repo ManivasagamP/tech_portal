@@ -121,7 +121,13 @@ class AuthController extends Notifier<AuthState> {
     // between the 24h session expiring and the next login.
     await ref.read(secureStoreProvider).clear();
     await ref.read(sessionStoreProvider).clear();
-    await ref.read(offlineDbProvider).wipe();
+    // NFR-1: never destroy unsent work. A queue that isn't empty stays on
+    // disk (still encrypted at rest) so the next sign-in on this device can
+    // finish draining it — wiping here would silently lose whatever a
+    // technician captured underground and hadn't synced yet.
+    if (await ref.read(offlineDbProvider).countMutations() == 0) {
+      await ref.read(offlineDbProvider).wipe();
+    }
     state = const AuthState();
   }
 

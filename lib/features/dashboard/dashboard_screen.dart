@@ -33,7 +33,9 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Future<void> _logout(BuildContext context, WidgetRef ref) async {
-    if (!await showLogoutDialog(context)) return;
+    final pending = await ref.read(pendingMutationCountProvider.future);
+    if (!context.mounted) return;
+    if (!await showLogoutDialog(context, pendingCount: pending)) return;
     await ref.read(authControllerProvider.notifier).logout();
     if (context.mounted) context.go(Routes.login);
   }
