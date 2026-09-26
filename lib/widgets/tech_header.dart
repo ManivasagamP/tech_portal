@@ -127,7 +127,13 @@ class _HeaderButton extends StatelessWidget {
 }
 
 /// Confirmation the dashboard and profile show before clearing the session.
-Future<bool> showLogoutDialog(BuildContext context) async {
+///
+/// [pendingCount] is the number of checks still sitting in the offline
+/// queue. Signing out never deletes them (see [AuthController.logout]) but
+/// a technician handing the phone over at end of shift needs to know their
+/// work is still on the device, not on the server, until someone signs
+/// back in with a connection to drain it.
+Future<bool> showLogoutDialog(BuildContext context, {int pendingCount = 0}) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
@@ -151,7 +157,14 @@ Future<bool> showLogoutDialog(BuildContext context) async {
           AppText('common.sign_out_title'.getString(context)),
         ],
       ),
-      content: AppText('common.sign_out_message'.getString(context)),
+      content: pendingCount > 0
+          ? AppText(
+              '$pendingCount check${pendingCount == 1 ? '' : 's'} on this '
+              "phone ${pendingCount == 1 ? "hasn't" : "haven't"} synced yet. "
+              "They'll stay saved on the device and send next time someone "
+              'signs in with a connection.',
+            )
+          : AppText('common.sign_out_message'.getString(context)),
       actions: [
         OutlinedButton(
           onPressed: () => Navigator.of(context).pop(false),

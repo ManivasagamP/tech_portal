@@ -10,6 +10,14 @@ import 'api_exception.dart';
 
 const kMutationIdHeader = 'X-Client-Mutation-Id';
 
+/// NFR-10 — a stable per-install id, so a queued/synced check is
+/// attributable to the device it was captured on as well as the person
+/// signed in at the time (the `Authorization` bearer token, which the
+/// server already resolves to a technician). Read once and cached in
+/// memory for the life of the client; [SecureStore.getOrCreateDeviceId]
+/// mints it once per install and it outlives every sign-out.
+const kDeviceIdHeader = 'X-Device-Id';
+
 /// Dio wrapper carrying the two things the server cares about: a bearer token and
 /// a stable mutation id for idempotent replays.
 class ApiClient {
@@ -33,6 +41,7 @@ class ApiClient {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          options.headers[kDeviceIdHeader] ??= await _deviceId();
           if (options.method != 'GET' &&
               !options.headers.containsKey(kMutationIdHeader)) {
             options.headers[kMutationIdHeader] = _uuid.v4();
@@ -57,6 +66,13 @@ class ApiClient {
   final Uuid _uuid;
   final _sessionExpired = StreamController<void>.broadcast();
   final _locationRequired = StreamController<void>.broadcast();
+  Future<String>? _deviceIdFuture;
+
+  /// Fetched (and minted, on first-ever call) once per app run, not once
+  /// per request — every request after the first reuses the same in-flight
+  /// or completed future instead of hitting secure storage again.
+  Future<String> _deviceId() =>
+      _deviceIdFuture ??= _secureStore.getOrCreateDeviceId();
 
   Dio get raw => _dio;
   Stream<void> get onSessionExpired => _sessionExpired.stream;

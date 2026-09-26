@@ -19,6 +19,16 @@ class RoutePackEstimate {
   final int assetCount;
   final int estimatedBytes;
 
+  /// NFR-4's own budget — "a full route pack of 500 assets" should stay
+  /// under this on device. The estimate used to be advisory only (shown,
+  /// never enforced); a technician could commit to a download this size or
+  /// larger with nothing stopping them. This is the client-side ceiling
+  /// until a real one comes back from the "route size ceiling" decision
+  /// still open in new_plan.md.
+  static const capBytes = 150 * 1024 * 1024;
+
+  bool get exceedsCap => estimatedBytes > capBytes;
+
   factory RoutePackEstimate.fromJson(Map<String, dynamic> json) => RoutePackEstimate(
     assetCount: (json['assetCount'] as num?)?.toInt() ?? 0,
     estimatedBytes: (json['estimatedBytes'] as num?)?.toInt() ?? 0,
