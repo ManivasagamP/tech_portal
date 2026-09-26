@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:uuid/uuid.dart';
 
 class SecureStore {
   SecureStore([FlutterSecureStorage? storage])
@@ -11,6 +12,12 @@ class SecureStore {
             );
 
   static const _tokenKey = 'token';
+
+  /// NFR-10 — one id per install, outliving any sign-out/sign-in cycle
+  /// (unlike [_tokenKey], never touched by [clear]) so every check this
+  /// phone ever queues or sends can be traced back to the device it came
+  /// from, not just the technician who happened to be signed in.
+  static const _deviceIdKey = 'device_id';
 
   /// FR-4.1/NFR-1 — the SQLCipher passphrase for `OfflineDb`, which holds
   /// cached assets, the mutation queue and queued photo blobs. Generated
@@ -53,6 +60,16 @@ class SecureStore {
     final passphrase = base64UrlEncode(bytes);
     await _storage.write(key: _dbPassphraseKey, value: passphrase);
     return passphrase;
+  }
+
+  /// Returns this install's device id, minting a fresh one on first launch.
+  Future<String> getOrCreateDeviceId() async {
+    final existing = await _storage.read(key: _deviceIdKey);
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final id = const Uuid().v4();
+    await _storage.write(key: _deviceIdKey, value: id);
+    return id;
   }
 
   Future<void> clear() async {
